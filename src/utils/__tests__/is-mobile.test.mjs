@@ -62,10 +62,10 @@ describe('isMobile', () => {
 
     // Restore initial properties
     // This part needs to be careful not to break if properties didn't exist
-    if (initialUserAgent !== undefined) global.navigator.userAgent = initialUserAgent; else delete global.navigator.userAgent;
-    if (initialUserAgentData !== undefined) global.navigator.userAgentData = initialUserAgentData; else delete global.navigator.userAgentData;
-    if (initialVendor !== undefined) global.navigator.vendor = initialVendor; else delete global.navigator.vendor;
-    if (initialOpera !== undefined) global.window.opera = initialOpera; else delete global.window.opera;
+    if (initialUserAgent !== undefined) global.navigator.userAgent = initialUserAgent; else global.navigator.userAgent = undefined;
+    if (initialUserAgentData !== undefined) global.navigator.userAgentData = initialUserAgentData; else global.navigator.userAgentData = undefined;
+    if (initialVendor !== undefined) global.navigator.vendor = initialVendor; else global.navigator.vendor = undefined;
+    if (initialOpera !== undefined) global.window.opera = initialOpera; else global.window.opera = undefined;
   });
 
   // Test cases for userAgentData

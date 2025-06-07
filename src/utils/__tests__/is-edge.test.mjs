@@ -35,7 +35,7 @@ describe('isEdge', () => {
             writable: true,
         });
     } else {
-        delete global.navigator.userAgent;
+        global.navigator.userAgent = undefined;
     }
   });
 

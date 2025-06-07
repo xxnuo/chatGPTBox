@@ -35,7 +35,7 @@ describe('isSafari', () => {
             writable: true,
         });
     } else {
-        delete global.navigator.vendor;
+        global.navigator.vendor = undefined;
     }
   });
 

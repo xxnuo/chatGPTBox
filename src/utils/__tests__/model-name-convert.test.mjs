@@ -330,7 +330,7 @@ describe('model-name-convert', () => {
     });
 
     test('should find group by preset part being a value in a ModelGroup', () => {
-      const group = getModelNameGroup('gpt-4-some-custom-ext'); // presetPart is 'gpt'
+      // const group = getModelNameGroup('gpt-4-some-custom-ext'); // This was unused.
       // current modelNameToPresetPart('gpt-4-...') returns 'gpt'. 'gpt' is not in any group value list.
       // Let's test 'gpt-4' which is in openAi group
       const gpt4Group = getModelNameGroup('gpt-4');
@@ -467,7 +467,7 @@ describe('model-name-convert', () => {
 
   describe('getApiModeGroup', () => {
     test('should return the group for a given apiMode', () => {
-      const apiMode = { groupName: 'openAi', itemName: 'gpt-4', isCustom: false, customName: '' };
+      // const apiMode = { groupName: 'openAi', itemName: 'gpt-4', isCustom: false, customName: '' }; // This was unused.
       // apiModeToModelName(apiMode) -> 'gpt-4'
       // getModelNameGroup('gpt-4') -> undefined with current logic.
       // This test will fail if getModelNameGroup doesn't resolve 'gpt-4'.
