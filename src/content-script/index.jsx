@@ -262,14 +262,14 @@ async function prepareForSelectionTools() {
   console.log('[content] Initializing selection tools.')
   document.addEventListener('mouseup', (e) => {
     try {
-      if (toolbarContainer && toolbarContainer.contains(e.target)) {
+      if (toolbarContainer?.contains(e.target)) { // Optional chaining
         console.debug('[content] Mouseup inside toolbar, ignoring.')
         return
       }
       const selectionElement =
         window.getSelection()?.rangeCount > 0 &&
         window.getSelection()?.getRangeAt(0).endContainer.parentElement
-      if (toolbarContainer && selectionElement && toolbarContainer.contains(selectionElement)) {
+      if (selectionElement && toolbarContainer?.contains(selectionElement)) { // Optional chaining for toolbarContainer
         console.debug('[content] Mouseup selection is inside toolbar, ignoring.')
         return
       }
@@ -323,7 +323,7 @@ async function prepareForSelectionTools() {
 
   document.addEventListener('mousedown', (e) => {
     try {
-      if (toolbarContainer && toolbarContainer.contains(e.target)) {
+      if (toolbarContainer?.contains(e.target)) { // Optional chaining
         console.debug('[content] Mousedown inside toolbar, ignoring.')
         return
       }
@@ -364,14 +364,13 @@ async function prepareForSelectionToolsTouch() {
   console.log('[content] Initializing touch selection tools.')
   document.addEventListener('touchend', (e) => {
     try {
-      if (toolbarContainer && toolbarContainer.contains(e.target)) {
+      if (toolbarContainer?.contains(e.target)) { // Optional chaining
         console.debug('[content] Touchend inside toolbar, ignoring.')
         return
       }
       if (
-        toolbarContainer &&
-        window.getSelection()?.rangeCount > 0 &&
-        toolbarContainer.contains(window.getSelection()?.getRangeAt(0).endContainer.parentElement)
+        window.getSelection()?.rangeCount > 0 && // selectionElement equivalent is implicitly checked by getSelection()
+        toolbarContainer?.contains(window.getSelection()?.getRangeAt(0).endContainer.parentElement) // Optional chaining
       ) {
         console.debug('[content] Touchend selection is inside toolbar, ignoring.')
         return
@@ -407,7 +406,7 @@ async function prepareForSelectionToolsTouch() {
 
   document.addEventListener('touchstart', (e) => {
     try {
-      if (toolbarContainer && toolbarContainer.contains(e.target)) {
+      if (toolbarContainer?.contains(e.target)) { // Optional chaining
         console.debug('[content] Touchstart inside toolbar, ignoring.')
         return
       }
@@ -655,37 +654,39 @@ async function prepareForJumpBackNotification() {
         if (!claudeSession) {
           console.log('[content] Claude session key not found, waiting for it...')
           let promiseSettled = false
+          let timerId = null
+          let timeoutId = null
+          const cleanup = () => {
+            if (timerId) clearInterval(timerId)
+            if (timeoutId) clearTimeout(timeoutId)
+          }
+
           await new Promise((resolve, reject) => {
-            const timer = setInterval(async () => {
-              if (promiseSettled) {
-                clearInterval(timer); // Ensure timer is cleared if settled by timeout
-                return;
+            timerId = setInterval(async () => {
+              if (promiseSettled) { // Should not happen if cleanup is called correctly
+                cleanup()
+                return
               }
               try {
                 claudeSession = await getClaudeSessionKey()
                 if (claudeSession) {
                   if (!promiseSettled) {
                     promiseSettled = true
-                    clearInterval(timer)
+                    cleanup()
                     console.log('[content] Claude session key found after waiting.')
                     resolve()
                   }
                 }
               } catch (err) {
                 console.error('[content] Error polling for Claude session key:', err)
-                // Optionally, if error is critical, settle promise
-                // if (!promiseSettled) {
-                //   promiseSettled = true;
-                //   clearInterval(timer);
-                //   reject(err);
-                // }
+                // Do not reject on polling error, let timeout handle failure.
               }
             }, 500)
-            // Timeout for waiting
-            setTimeout(() => {
+
+            timeoutId = setTimeout(() => {
               if (!promiseSettled) {
                 promiseSettled = true
-                clearInterval(timer)
+                cleanup()
                 console.warn('[content] Timed out waiting for Claude session key.')
                 reject(new Error('Timed out waiting for Claude session key.'))
               }
@@ -717,18 +718,25 @@ async function prepareForJumpBackNotification() {
           }, 1000)
 
           let promiseSettled = false
+          let timerId = null
+          let timeoutId = null
+          const cleanup = () => {
+            if (timerId) clearInterval(timerId)
+            if (timeoutId) clearTimeout(timeoutId)
+          }
+
           await new Promise((resolve, reject) => {
-            const timer = setInterval(async () => {
-              if (promiseSettled) {
-                clearInterval(timer);
-                return;
+            timerId = setInterval(async () => {
+              if (promiseSettled) { // Should not happen
+                cleanup()
+                return
               }
               try {
                 const token = window.localStorage.refresh_token
                 if (token) {
                   if (!promiseSettled) {
                     promiseSettled = true
-                    clearInterval(timer)
+                    cleanup()
                     console.log('[content] Kimi refresh token found after waiting.')
                     await setUserConfig({ kimiMoonShotRefreshToken: token })
                     console.log('[content] Kimi refresh token saved to config.')
@@ -737,17 +745,14 @@ async function prepareForJumpBackNotification() {
                 }
               } catch (err_set) {
                 console.error('[content] Error setting Kimi refresh token from polling:', err_set)
-                // if (!promiseSettled) {
-                //   promiseSettled = true;
-                //   clearInterval(timer);
-                //   reject(err_set);
-                // }
+                 // Do not reject on polling error, let timeout handle failure.
               }
             }, 500)
-            setTimeout(() => {
+
+            timeoutId = setTimeout(() => {
               if (!promiseSettled) {
                 promiseSettled = true
-                clearInterval(timer)
+                cleanup()
                 console.warn('[content] Timed out waiting for Kimi refresh token.')
                 reject(new Error('Timed out waiting for Kimi refresh token.'))
               }

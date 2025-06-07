@@ -51,30 +51,79 @@ import { generateAnswersWithMoonshotCompletionApi } from '../services/apis/moons
 import { generateAnswersWithMoonshotWebApi } from '../services/apis/moonshot-web.mjs'
 import { isUsingModelName } from '../utils/model-name-convert.mjs'
 
+const RECONNECT_CONFIG = {
+  MAX_ATTEMPTS: 5,
+  BASE_DELAY_MS: 1000, // Base delay in milliseconds
+  BACKOFF_MULTIPLIER: 2, // Multiplier for exponential backoff
+};
+
+const SENSITIVE_KEYWORDS = [
+  'apikey', // Covers apiKey, customApiKey, claudeApiKey, etc.
+  'token',  // Covers accessToken, refreshToken, etc.
+  'secret',
+  'password',
+  'kimimoonshotrefreshtoken',
+];
+
+function redactSensitiveFields(obj, recursionDepth = 0, maxDepth = 5) {
+  if (recursionDepth > maxDepth) {
+    // Prevent infinite recursion on circular objects or excessively deep structures
+    return 'REDACTED_TOO_DEEP';
+  }
+  // Handle null, primitives, and functions directly
+  if (obj === null || typeof obj !== 'object') {
+    return obj;
+  }
+
+  // Create a new object or array to store redacted fields, ensuring original is not modified
+  const redactedObj = Array.isArray(obj) ? [] : {};
+
+  for (const key in obj) {
+    // Ensure we're only processing own properties
+    if (Object.prototype.hasOwnProperty.call(obj, key)) {
+      const lowerKey = key.toLowerCase();
+      let isSensitive = false;
+      for (const keyword of SENSITIVE_KEYWORDS) {
+        if (lowerKey.includes(keyword)) {
+          isSensitive = true;
+          break;
+        }
+      }
+
+      if (isSensitive) {
+        redactedObj[key] = 'REDACTED';
+      } else if (typeof obj[key] === 'object') {
+        // If the value is an object (or array), recurse
+        redactedObj[key] = redactSensitiveFields(obj[key], recursionDepth + 1, maxDepth);
+      } else {
+        // Otherwise, copy the value as is
+        redactedObj[key] = obj[key];
+      }
+    }
+  }
+  return redactedObj;
+}
+
 function setPortProxy(port, proxyTabId) {
   try {
     console.debug(`[background] Attempting to connect to proxy tab: ${proxyTabId}`)
-    // Define listeners here so they can be referenced for removal
-    // These will be port-specific if setPortProxy is called for different ports.
-    // However, a single port object is typically used per connection instance from the other side.
-    // The issue arises if `setPortProxy` is called multiple times on the *same* port object for reconnections.
 
-    // Ensure old listeners on port.proxy are removed if it exists (e.g. from a previous failed attempt on this same port object)
+    // Ensure old listeners on port.proxy are removed if it exists
     if (port.proxy) {
         try {
             if (port._proxyOnMessage) port.proxy.onMessage.removeListener(port._proxyOnMessage);
             if (port._proxyOnDisconnect) port.proxy.onDisconnect.removeListener(port._proxyOnDisconnect);
         } catch(e) {
-            console.warn('[background] Error removing old listeners from previous port.proxy:', e);
+            console.warn('[background] Error removing old listeners from previous port.proxy instance:', e);
         }
     }
-    // Also remove listeners from the main port object that this function might have added
+    // Also remove listeners from the main port object that this function might have added in a previous call for this port instance
     if (port._portOnMessage) port.onMessage.removeListener(port._portOnMessage);
     if (port._portOnDisconnect) port.onDisconnect.removeListener(port._portOnDisconnect);
 
 
     port.proxy = Browser.tabs.connect(proxyTabId, { name: 'background-to-content-script-proxy' })
-    console.log(`[background] Successfully connected to proxy tab: ${proxyTabId}`)
+    console.debug(`[background] Successfully connected to proxy tab: ${proxyTabId}`)
     port._reconnectAttempts = 0 // Reset retry count on successful connection
 
     port._proxyOnMessage = (msg) => {
@@ -90,64 +139,75 @@ function setPortProxy(port, proxyTabId) {
       }
     }
 
-    const MAX_RECONNECT_ATTEMPTS = 5;
-
     port._proxyOnDisconnect = () => {
       console.warn(`[background] Proxy tab ${proxyTabId} disconnected.`)
 
-      // Cleanup this specific proxy's listeners
-      if (port.proxy) {
-        port.proxy.onMessage.removeListener(port._proxyOnMessage);
-        port.proxy.onDisconnect.removeListener(port._proxyOnDisconnect); // remove self
+      // Cleanup this specific proxy's listeners before setting port.proxy to null
+      if (port.proxy) { // Check if port.proxy is still valid
+        if (port._proxyOnMessage) {
+            try { port.proxy.onMessage.removeListener(port._proxyOnMessage); }
+            catch(e) { console.warn("[background] Error removing _proxyOnMessage from disconnected port.proxy:", e); }
+        }
+        if (port._proxyOnDisconnect) { // port._proxyOnDisconnect is this function itself
+            try { port.proxy.onDisconnect.removeListener(port._proxyOnDisconnect); }
+            catch(e) { console.warn("[background] Error removing _proxyOnDisconnect from disconnected port.proxy:", e); }
+        }
       }
       port.proxy = null // Clear the old proxy
 
       port._reconnectAttempts = (port._reconnectAttempts || 0) + 1;
-      if (port._reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
-        console.error(`[background] Max reconnect attempts (${MAX_RECONNECT_ATTEMPTS}) reached for tab ${proxyTabId}. Giving up.`);
-        // Important: also clean up listeners on the main 'port' object associated with this proxy connection
-        if (port._portOnMessage) port.onMessage.removeListener(port._portOnMessage);
-        // Do not remove port._portOnDisconnect here as it might be the generic one for the *other* end.
-        // This needs careful thought: is portOnDisconnect for THIS proxy instance or for the overall port?
-        // Assuming port.onDisconnect is for the connection that initiated this proxy.
-        // If that disconnects, it should clean up its own _portOnMessage and _proxyOnMessage etc.
+      if (port._reconnectAttempts > RECONNECT_CONFIG.MAX_ATTEMPTS) {
+        console.error(`[background] Max reconnect attempts (${RECONNECT_CONFIG.MAX_ATTEMPTS}) reached for tab ${proxyTabId}. Giving up.`);
+        if (port._portOnMessage) {
+            try { port.onMessage.removeListener(port._portOnMessage); }
+            catch(e) { console.warn("[background] Error removing _portOnMessage on max retries:", e); }
+        }
+        // Note: _portOnDisconnect on the main port should remain to handle its eventual disconnection.
         return;
       }
 
-      const delay = Math.pow(2, port._reconnectAttempts - 1) * 1000; // Exponential backoff
+      const delay = Math.pow(RECONNECT_CONFIG.BACKOFF_MULTIPLIER, port._reconnectAttempts - 1) * RECONNECT_CONFIG.BASE_DELAY_MS;
       console.log(`[background] Attempting reconnect #${port._reconnectAttempts} in ${delay / 1000}s for tab ${proxyTabId}.`)
 
       setTimeout(() => {
         console.debug(`[background] Retrying connection to tab ${proxyTabId}, attempt ${port._reconnectAttempts}.`);
-        setPortProxy(port, proxyTabId); // Reconnect (will add new listeners)
+        setPortProxy(port, proxyTabId); // Reconnect
       }, delay);
     }
 
-    // This is the handler for when the *other* end of the 'port' disconnects (e.g. the popup closes)
-    // It should clean up everything related to this 'port's proxying activity.
     port._portOnDisconnect = () => {
       console.log('[background] Main port disconnected (e.g. popup/sidebar closed). Cleaning up proxy connections and listeners.');
-      if (port._portOnMessage) port.onMessage.removeListener(port._portOnMessage);
+      if (port._portOnMessage) {
+        try { port.onMessage.removeListener(port._portOnMessage); }
+        catch(e) { console.warn("[background] Error removing _portOnMessage on main port disconnect:", e); }
+      }
       if (port.proxy) {
-        if (port._proxyOnMessage) port.proxy.onMessage.removeListener(port._proxyOnMessage);
-        if (port._proxyOnDisconnect) port.proxy.onDisconnect.removeListener(port._proxyOnDisconnect);
+        if (port._proxyOnMessage) {
+            try { port.proxy.onMessage.removeListener(port._proxyOnMessage); }
+            catch(e) { console.warn("[background] Error removing _proxyOnMessage from port.proxy on main port disconnect:", e); }
+        }
+        if (port._proxyOnDisconnect) {
+            try { port.proxy.onDisconnect.removeListener(port._proxyOnDisconnect); }
+            catch(e) { console.warn("[background] Error removing _proxyOnDisconnect from port.proxy on main port disconnect:", e); }
+        }
         try {
-            port.proxy.disconnect(); // Disconnect the connection to the content script
+            port.proxy.disconnect();
         } catch(e) {
-            console.warn('[background] Error disconnecting port.proxy:', e);
+            console.warn('[background] Error disconnecting port.proxy on main port disconnect:', e);
         }
         port.proxy = null;
       }
-      // Remove self
-      if (port._portOnDisconnect) port.onDisconnect.removeListener(port._portOnDisconnect);
-      // Reset for potential future use of this port object if it's somehow reused (though typically new port objects are made)
+      if (port._portOnDisconnect) { // Remove self from main port
+        try { port.onDisconnect.removeListener(port._portOnDisconnect); }
+        catch(e) { console.warn("[background] Error removing _portOnDisconnect on main port disconnect:", e); }
+      }
       port._reconnectAttempts = 0;
     }
 
     port.proxy.onMessage.addListener(port._proxyOnMessage)
-    port.onMessage.addListener(port._portOnMessage) // For messages from the other end to be proxied
-    port.proxy.onDisconnect.addListener(port._proxyOnDisconnect) // When content script/tab proxy disconnects
-    port.onDisconnect.addListener(port._portOnDisconnect) // When the other end (popup/sidebar) disconnects
+    port.onMessage.addListener(port._portOnMessage)
+    port.proxy.onDisconnect.addListener(port._proxyOnDisconnect)
+    port.onDisconnect.addListener(port._portOnDisconnect)
 
   } catch (error) {
     console.error(`[background] Error in setPortProxy for tab ${proxyTabId}:`, error)
@@ -158,22 +218,13 @@ async function executeApi(session, port, config) {
   console.log(
     `[background] executeApi called for model: ${session.modelName}, apiMode: ${session.apiMode}`,
   )
-  console.debug('[background] Full session details:', session)
-  // Redact sensitive config details before logging
-  const redactedConfig = { ...config };
-  if (redactedConfig.apiKey) redactedConfig.apiKey = 'REDACTED';
-  if (redactedConfig.customApiKey) redactedConfig.customApiKey = 'REDACTED';
-  if (redactedConfig.claudeApiKey) redactedConfig.claudeApiKey = 'REDACTED';
-  if (redactedConfig.kimiMoonShotRefreshToken) redactedConfig.kimiMoonShotRefreshToken = 'REDACTED';
-  // Add any other sensitive keys that might exist in 'config' or 'session.apiMode'
-  if (session.apiMode && session.apiMode.apiKey) {
-    redactedConfig.apiMode = { ...session.apiMode, apiKey: 'REDACTED' };
-  } else if (session.apiMode) {
-    redactedConfig.apiMode = { ...session.apiMode };
+  // Use the new helper function for session and config details
+  console.debug('[background] Full session details (redacted):', redactSensitiveFields(session))
+  console.debug('[background] Full config details (redacted):', redactSensitiveFields(config))
+  // Specific redaction for session.apiMode if it exists, as it's part of the session object
+  if (session.apiMode) {
+    console.debug('[background] Session apiMode details (redacted):', redactSensitiveFields(session.apiMode))
   }
-
-
-  console.debug('[background] Redacted config details:', redactedConfig)
 
   try {
     if (isUsingCustomModel(session)) {
@@ -489,10 +540,11 @@ try {
         const headers = details.requestHeaders
         let modified = false
         for (let i = 0; i < headers.length; i++) {
-          if (headers[i].name.toLowerCase() === 'origin') {
+          const headerNameLower = headers[i]?.name?.toLowerCase(); // Apply optional chaining
+          if (headerNameLower === 'origin') {
             headers[i].value = 'https://www.bing.com'
             modified = true
-          } else if (headers[i].name.toLowerCase() === 'referer') {
+          } else if (headerNameLower === 'referer') {
             headers[i].value = 'https://www.bing.com/search?q=Bing+AI&showconv=1&FORM=hpcodx'
             modified = true
           }
@@ -539,21 +591,8 @@ try {
         })
         console.debug(`[background] Side panel options set for tab ${tabId} using Browser.sidePanel`)
       } else {
-        // Fallback or log if Browser.sidePanel is somehow not available (though polyfill should handle it)
-        console.debug('[background] Browser.sidePanel API not available. Attempting chrome.sidePanel as fallback.')
-        // Keeping the original chrome check as a fallback, though ideally Browser.sidePanel should work.
-        // eslint-disable-next-line no-undef
-        if (chrome && chrome.sidePanel) {
-          // eslint-disable-next-line no-undef
-          await chrome.sidePanel.setOptions({
-            tabId,
-            path: 'IndependentPanel.html',
-            enabled: true,
-          })
-          console.debug(`[background] Side panel options set for tab ${tabId} using chrome.sidePanel`)
-        } else {
-          console.debug('[background] chrome.sidePanel API also not available.')
-        }
+        // Log if Browser.sidePanel is somehow not available (polyfill should generally handle this)
+        console.warn('[background] Browser.sidePanel API not available. Side panel options not set.')
       }
     } catch (error) {
       console.error('[background] Error in tabs.onUpdated listener callback:', error, tabId, info)
