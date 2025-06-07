@@ -262,14 +262,14 @@ async function prepareForSelectionTools() {
   console.log('[content] Initializing selection tools.')
   document.addEventListener('mouseup', (e) => {
     try {
-      if (toolbarContainer?.contains(e.target)) { // Optional chaining
+      if (toolbarContainer?.contains(e.target)) {
         console.debug('[content] Mouseup inside toolbar, ignoring.')
         return
       }
       const selectionElement =
         window.getSelection()?.rangeCount > 0 &&
         window.getSelection()?.getRangeAt(0).endContainer.parentElement
-      if (selectionElement && toolbarContainer?.contains(selectionElement)) { // Optional chaining for toolbarContainer
+      if (selectionElement && toolbarContainer?.contains(selectionElement)) {
         console.debug('[content] Mouseup selection is inside toolbar, ignoring.')
         return
       }
@@ -300,7 +300,7 @@ async function prepareForSelectionTools() {
                 const clientRect = getClientPosition(inputElement)
                 position = {
                   x: clientRect.x + window.scrollX + inputElement.offsetWidth + 50,
-                  y: e.pageY + 30, // Using pageY for consistency with mouseup
+                  y: e.pageY + 30,
                 }
               } else {
                 position = { x: e.pageX + 20, y: e.pageY + 20 }
@@ -315,7 +315,7 @@ async function prepareForSelectionTools() {
         } catch (err) {
           console.error('[content] Error in mouseup setTimeout callback for selection tools:', err)
         }
-      }, 0) // Changed to 0ms for faster response, was previously implicit
+      }, 0)
     } catch (error) {
       console.error('[content] Error in mouseup listener for selection tools:', error)
     }
@@ -323,13 +323,13 @@ async function prepareForSelectionTools() {
 
   document.addEventListener('mousedown', (e) => {
     try {
-      if (toolbarContainer?.contains(e.target)) { // Optional chaining
+      if (toolbarContainer?.contains(e.target)) {
         console.debug('[content] Mousedown inside toolbar, ignoring.')
         return
       }
       console.debug('[content] Mousedown outside toolbar, removing existing toolbars.')
       document.querySelectorAll('.chatgptbox-toolbar-container').forEach((el) => el.remove())
-      toolbarContainer = null // Clear reference
+      toolbarContainer = null
     } catch (error) {
       console.error('[content] Error in mousedown listener for selection tools:', error)
     }
@@ -364,13 +364,13 @@ async function prepareForSelectionToolsTouch() {
   console.log('[content] Initializing touch selection tools.')
   document.addEventListener('touchend', (e) => {
     try {
-      if (toolbarContainer?.contains(e.target)) { // Optional chaining
+      if (toolbarContainer?.contains(e.target)) {
         console.debug('[content] Touchend inside toolbar, ignoring.')
         return
       }
       if (
-        window.getSelection()?.rangeCount > 0 && // selectionElement equivalent is implicitly checked by getSelection()
-        toolbarContainer?.contains(window.getSelection()?.getRangeAt(0).endContainer.parentElement) // Optional chaining
+        window.getSelection()?.rangeCount > 0 &&
+        toolbarContainer?.contains(window.getSelection()?.getRangeAt(0).endContainer.parentElement)
       ) {
         console.debug('[content] Touchend selection is inside toolbar, ignoring.')
         return
@@ -406,7 +406,7 @@ async function prepareForSelectionToolsTouch() {
 
   document.addEventListener('touchstart', (e) => {
     try {
-      if (toolbarContainer?.contains(e.target)) { // Optional chaining
+      if (toolbarContainer?.contains(e.target)) {
         console.debug('[content] Touchstart inside toolbar, ignoring.')
         return
       }
@@ -497,7 +497,7 @@ async function prepareForStaticCard() {
       siteRegexPattern =
         (userConfig.siteRegex ? userConfig.siteRegex + '|' : '') +
         Object.keys(siteConfig)
-          .filter((k) => k) // Ensure keys are not empty
+          .filter((k) => k)
           .join('|')
     }
 
@@ -609,7 +609,6 @@ async function overwriteAccessToken() {
     if (data && data.accessToken) {
       await setAccessToken(data.accessToken)
       console.log('[content] ChatGPT Access token has been set successfully from page data.')
-      // console.debug('[content] AccessToken:', data.accessToken) // Avoid logging sensitive token
     } else {
       console.warn('[content] No access token found in page data or fetch response.')
     }
@@ -663,7 +662,8 @@ async function prepareForJumpBackNotification() {
 
           await new Promise((resolve, reject) => {
             timerId = setInterval(async () => {
-              if (promiseSettled) { // Should not happen if cleanup is called correctly
+              if (promiseSettled) {
+                console.warn('[content] Promise already settled but Claude interval still running. This indicates a potential cleanup issue.');
                 cleanup()
                 return
               }
@@ -679,7 +679,6 @@ async function prepareForJumpBackNotification() {
                 }
               } catch (err) {
                 console.error('[content] Error polling for Claude session key:', err)
-                // Do not reject on polling error, let timeout handle failure.
               }
             }, 500)
 
@@ -690,10 +689,10 @@ async function prepareForJumpBackNotification() {
                 console.warn('[content] Timed out waiting for Claude session key.')
                 reject(new Error('Timed out waiting for Claude session key.'))
               }
-            }, 30000) // 30 second timeout
+            }, 30000)
           }).catch((err) => {
             console.error('[content] Failed to get Claude session key for jump back notification:', err)
-            return // Do not proceed to render if session key is critical and not found
+            return
           })
         } else {
           console.log('[content] Claude session key found immediately.')
@@ -727,7 +726,8 @@ async function prepareForJumpBackNotification() {
 
           await new Promise((resolve, reject) => {
             timerId = setInterval(async () => {
-              if (promiseSettled) { // Should not happen
+              if (promiseSettled) {
+                console.warn('[content] Promise already settled but Kimi interval still running. This indicates a potential cleanup issue.');
                 cleanup()
                 return
               }
@@ -745,7 +745,6 @@ async function prepareForJumpBackNotification() {
                 }
               } catch (err_set) {
                 console.error('[content] Error setting Kimi refresh token from polling:', err_set)
-                 // Do not reject on polling error, let timeout handle failure.
               }
             }, 500)
 
@@ -756,14 +755,13 @@ async function prepareForJumpBackNotification() {
                 console.warn('[content] Timed out waiting for Kimi refresh token.')
                 reject(new Error('Timed out waiting for Kimi refresh token.'))
               }
-            }, 30000) // 30 second timeout
+            }, 30000)
           }).catch((err) => {
             console.error('[content] Failed to get Kimi refresh token for jump back notification:', err)
-            return // Do not proceed
+            return
           })
         } else {
           console.log('[content] Kimi refresh token found in localStorage.')
-          // Ensure it's in config if found immediately
           await setUserConfig({ kimiMoonShotRefreshToken: window.localStorage.refresh_token })
         }
       }
@@ -802,8 +800,6 @@ async function run() {
           console.log('[content] Processing CHANGE_LANG message:', message.data)
           changeLanguage(message.data.lang)
         }
-        // Other message types previously handled by prepareForRightClickMenu's listener
-        // are now part of that function's specific listener.
       } catch (error) {
         console.error('[content] Error in global runtime.onMessage listener:', error, message)
       }
@@ -826,10 +822,9 @@ async function run() {
       }
     })
 
-    // Initialize all features
     await prepareForSelectionTools()
     await prepareForSelectionToolsTouch()
-    await prepareForStaticCard() // Ensure this can run without error if siteConfigs are complex
+    await prepareForStaticCard()
     await prepareForRightClickMenu()
     await prepareForJumpBackNotification()
 
@@ -839,7 +834,6 @@ async function run() {
   }
 }
 
-// Define the new state management function
 async function manageChatGptTabState() {
   console.debug('[content] manageChatGptTabState called. Current location:', location.href)
   try {
@@ -864,20 +858,22 @@ async function manageChatGptTabState() {
       if (location.pathname === '/') {
         console.debug('[content] On chatgpt.com root path.')
         const input = document.querySelector('#prompt-textarea')
-        if (input && input.value === '') { // Check input.value instead of input.textContent
+        if (input && input.value === '') {
           console.log('[content] Manipulating #prompt-textarea for focus.')
-          input.value = ' ' // Set input.value
+          input.value = ' '
           input.dispatchEvent(new Event('input', { bubbles: true }))
           setTimeout(() => {
-            if (input.value === ' ') { // Check input.value
-              input.value = '' // Set input.value
+            if (input && input.value === ' ') {
+              input.value = ''
               input.dispatchEvent(new Event('input', { bubbles: true }))
               console.debug('[content] #prompt-textarea manipulation complete.')
+            } else if (!input) {
+              console.warn('[content] #prompt-textarea no longer available in setTimeout callback.');
             }
           }, 300)
         } else {
           console.debug(
-            '[content] #prompt-textarea not found, not empty, or not on root path for manipulation.',
+            '[content] #prompt-textarea not found, not empty (value: "'+ input?.value +'"), or not on root path for manipulation.',
           )
         }
       }
@@ -896,8 +892,6 @@ async function manageChatGptTabState() {
   }
 }
 
-// Register the port listener once if on the correct domain.
-// This sets up the Browser.runtime.onConnect listener.
 if (!window.__chatGPTBoxPortListenerRegistered) {
   try {
     if (location.hostname === 'chatgpt.com' && location.pathname !== '/auth/login') {

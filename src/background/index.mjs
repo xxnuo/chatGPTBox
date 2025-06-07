@@ -58,28 +58,31 @@ const RECONNECT_CONFIG = {
 };
 
 const SENSITIVE_KEYWORDS = [
-  'apikey', // Covers apiKey, customApiKey, claudeApiKey, etc.
-  'token',  // Covers accessToken, refreshToken, etc.
+  'apikey',
+  'token',
   'secret',
   'password',
   'kimimoonshotrefreshtoken',
+  'auth',
+  'key',
+  'credential',
 ];
 
-function redactSensitiveFields(obj, recursionDepth = 0, maxDepth = 5) {
+function redactSensitiveFields(obj, recursionDepth = 0, maxDepth = 5, seen = new WeakSet()) {
   if (recursionDepth > maxDepth) {
-    // Prevent infinite recursion on circular objects or excessively deep structures
     return 'REDACTED_TOO_DEEP';
   }
-  // Handle null, primitives, and functions directly
   if (obj === null || typeof obj !== 'object') {
     return obj;
   }
 
-  // Create a new object or array to store redacted fields, ensuring original is not modified
-  const redactedObj = Array.isArray(obj) ? [] : {};
+  if (seen.has(obj)) {
+    return 'REDACTED_CIRCULAR_REFERENCE';
+  }
+  seen.add(obj);
 
+  const redactedObj = Array.isArray(obj) ? [] : {};
   for (const key in obj) {
-    // Ensure we're only processing own properties
     if (Object.prototype.hasOwnProperty.call(obj, key)) {
       const lowerKey = key.toLowerCase();
       let isSensitive = false;
@@ -89,14 +92,11 @@ function redactSensitiveFields(obj, recursionDepth = 0, maxDepth = 5) {
           break;
         }
       }
-
       if (isSensitive) {
         redactedObj[key] = 'REDACTED';
       } else if (typeof obj[key] === 'object') {
-        // If the value is an object (or array), recurse
-        redactedObj[key] = redactSensitiveFields(obj[key], recursionDepth + 1, maxDepth);
+        redactedObj[key] = redactSensitiveFields(obj[key], recursionDepth + 1, maxDepth, seen);
       } else {
-        // Otherwise, copy the value as is
         redactedObj[key] = obj[key];
       }
     }
@@ -108,7 +108,6 @@ function setPortProxy(port, proxyTabId) {
   try {
     console.debug(`[background] Attempting to connect to proxy tab: ${proxyTabId}`)
 
-    // Ensure old listeners on port.proxy are removed if it exists
     if (port.proxy) {
         try {
             if (port._proxyOnMessage) port.proxy.onMessage.removeListener(port._proxyOnMessage);
@@ -117,14 +116,12 @@ function setPortProxy(port, proxyTabId) {
             console.warn('[background] Error removing old listeners from previous port.proxy instance:', e);
         }
     }
-    // Also remove listeners from the main port object that this function might have added in a previous call for this port instance
     if (port._portOnMessage) port.onMessage.removeListener(port._portOnMessage);
     if (port._portOnDisconnect) port.onDisconnect.removeListener(port._portOnDisconnect);
 
-
     port.proxy = Browser.tabs.connect(proxyTabId, { name: 'background-to-content-script-proxy' })
     console.debug(`[background] Successfully connected to proxy tab: ${proxyTabId}`)
-    port._reconnectAttempts = 0 // Reset retry count on successful connection
+    port._reconnectAttempts = 0
 
     port._proxyOnMessage = (msg) => {
       console.debug('[background] Message from proxy tab:', msg)
@@ -142,18 +139,19 @@ function setPortProxy(port, proxyTabId) {
     port._proxyOnDisconnect = () => {
       console.warn(`[background] Proxy tab ${proxyTabId} disconnected.`)
 
-      // Cleanup this specific proxy's listeners before setting port.proxy to null
-      if (port.proxy) { // Check if port.proxy is still valid
+      const proxyRef = port.proxy;
+      port.proxy = null
+
+      if (proxyRef) {
         if (port._proxyOnMessage) {
-            try { port.proxy.onMessage.removeListener(port._proxyOnMessage); }
-            catch(e) { console.warn("[background] Error removing _proxyOnMessage from disconnected port.proxy:", e); }
+            try { proxyRef.onMessage.removeListener(port._proxyOnMessage); }
+            catch(e) { console.warn("[background] Error removing _proxyOnMessage from disconnected proxyRef:", e); }
         }
-        if (port._proxyOnDisconnect) { // port._proxyOnDisconnect is this function itself
-            try { port.proxy.onDisconnect.removeListener(port._proxyOnDisconnect); }
-            catch(e) { console.warn("[background] Error removing _proxyOnDisconnect from disconnected port.proxy:", e); }
+        if (port._proxyOnDisconnect) {
+            try { proxyRef.onDisconnect.removeListener(port._proxyOnDisconnect); }
+            catch(e) { console.warn("[background] Error removing _proxyOnDisconnect from disconnected proxyRef:", e); }
         }
       }
-      port.proxy = null // Clear the old proxy
 
       port._reconnectAttempts = (port._reconnectAttempts || 0) + 1;
       if (port._reconnectAttempts > RECONNECT_CONFIG.MAX_ATTEMPTS) {
@@ -162,7 +160,6 @@ function setPortProxy(port, proxyTabId) {
             try { port.onMessage.removeListener(port._portOnMessage); }
             catch(e) { console.warn("[background] Error removing _portOnMessage on max retries:", e); }
         }
-        // Note: _portOnDisconnect on the main port should remain to handle its eventual disconnection.
         return;
       }
 
@@ -171,7 +168,7 @@ function setPortProxy(port, proxyTabId) {
 
       setTimeout(() => {
         console.debug(`[background] Retrying connection to tab ${proxyTabId}, attempt ${port._reconnectAttempts}.`);
-        setPortProxy(port, proxyTabId); // Reconnect
+        setPortProxy(port, proxyTabId);
       }, delay);
     }
 
@@ -181,23 +178,24 @@ function setPortProxy(port, proxyTabId) {
         try { port.onMessage.removeListener(port._portOnMessage); }
         catch(e) { console.warn("[background] Error removing _portOnMessage on main port disconnect:", e); }
       }
-      if (port.proxy) {
+      const proxyRef = port.proxy;
+      if (proxyRef) {
         if (port._proxyOnMessage) {
-            try { port.proxy.onMessage.removeListener(port._proxyOnMessage); }
-            catch(e) { console.warn("[background] Error removing _proxyOnMessage from port.proxy on main port disconnect:", e); }
+            try { proxyRef.onMessage.removeListener(port._proxyOnMessage); }
+            catch(e) { console.warn("[background] Error removing _proxyOnMessage from proxyRef on main port disconnect:", e); }
         }
         if (port._proxyOnDisconnect) {
-            try { port.proxy.onDisconnect.removeListener(port._proxyOnDisconnect); }
-            catch(e) { console.warn("[background] Error removing _proxyOnDisconnect from port.proxy on main port disconnect:", e); }
+            try { proxyRef.onDisconnect.removeListener(port._proxyOnDisconnect); }
+            catch(e) { console.warn("[background] Error removing _proxyOnDisconnect from proxyRef on main port disconnect:", e); }
         }
         try {
-            port.proxy.disconnect();
+            proxyRef.disconnect();
         } catch(e) {
-            console.warn('[background] Error disconnecting port.proxy on main port disconnect:', e);
+            console.warn('[background] Error disconnecting proxyRef on main port disconnect:', e);
         }
         port.proxy = null;
       }
-      if (port._portOnDisconnect) { // Remove self from main port
+      if (port._portOnDisconnect) {
         try { port.onDisconnect.removeListener(port._portOnDisconnect); }
         catch(e) { console.warn("[background] Error removing _portOnDisconnect on main port disconnect:", e); }
       }
@@ -218,10 +216,8 @@ async function executeApi(session, port, config) {
   console.log(
     `[background] executeApi called for model: ${session.modelName}, apiMode: ${session.apiMode}`,
   )
-  // Use the new helper function for session and config details
   console.debug('[background] Full session details (redacted):', redactSensitiveFields(session))
   console.debug('[background] Full config details (redacted):', redactSensitiveFields(config))
-  // Specific redaction for session.apiMode if it exists, as it's part of the session object
   if (session.apiMode) {
     console.debug('[background] Session apiMode details (redacted):', redactSensitiveFields(session.apiMode))
   }
@@ -481,9 +477,7 @@ Browser.runtime.onMessage.addListener(async (message, sender) => {
       'Original message:',
       message,
     )
-    // Consider if a response is expected and how to send an error response
     if (message.type === 'FETCH') {
-      // FETCH expects a response
       return [null, { message: error.message, stack: error.stack }]
     }
   }
@@ -540,13 +534,15 @@ try {
         const headers = details.requestHeaders
         let modified = false
         for (let i = 0; i < headers.length; i++) {
-          const headerNameLower = headers[i]?.name?.toLowerCase(); // Apply optional chaining
-          if (headerNameLower === 'origin') {
-            headers[i].value = 'https://www.bing.com'
-            modified = true
-          } else if (headerNameLower === 'referer') {
-            headers[i].value = 'https://www.bing.com/search?q=Bing+AI&showconv=1&FORM=hpcodx'
-            modified = true
+          if (headers[i]) {
+            const headerNameLower = headers[i].name?.toLowerCase();
+            if (headerNameLower === 'origin') {
+              headers[i].value = 'https://www.bing.com'
+              modified = true
+            } else if (headerNameLower === 'referer') {
+              headers[i].value = 'https://www.bing.com/search?q=Bing+AI&showconv=1&FORM=hpcodx'
+              modified = true
+            }
           }
         }
         if (modified) {
@@ -559,45 +555,73 @@ try {
           error,
           details,
         )
-        return { requestHeaders: details.requestHeaders } // Return original headers on error
+        return { requestHeaders: details.requestHeaders }
       }
     },
     {
       urls: ['wss://sydney.bing.com/*', 'https://www.bing.com/*'],
       types: ['xmlhttprequest', 'websocket'],
     },
-    // Use 'blocking' for modifying request headers, and ensure permissions are set in manifest
     ['blocking', 'requestHeaders'],
   )
 
   Browser.tabs.onUpdated.addListener(async (tabId, info, tab) => {
+    const outerTryCatchError = (error) => { // Renamed to avoid conflict with inner error
+      console.error('[background] Error in tabs.onUpdated listener callback (outer):', error, tabId, info);
+    };
     try {
-      // Refined condition: Ensure URL exists and tab loading is complete.
       if (!tab.url || (info.status && info.status !== 'complete')) {
         console.debug(
           `[background] Skipping side panel update for tabId: ${tabId}. Tab URL: ${tab.url}, Info Status: ${info.status}`,
-        )
-        return
+        );
+        return;
       }
       console.debug(
         `[background] tabs.onUpdated event for tabId: ${tabId}, status: ${info.status}, url: ${tab.url}. Proceeding with side panel update.`,
-      )
-      // Use Browser.sidePanel from webextension-polyfill for consistency and cross-browser compatibility
-      if (Browser.sidePanel) {
-        await Browser.sidePanel.setOptions({
-          tabId,
-          path: 'IndependentPanel.html',
-          enabled: true,
-        })
-        console.debug(`[background] Side panel options set for tab ${tabId} using Browser.sidePanel`)
-      } else {
-        // Log if Browser.sidePanel is somehow not available (polyfill should generally handle this)
-        console.warn('[background] Browser.sidePanel API not available. Side panel options not set.')
+      );
+
+      let sidePanelSet = false;
+      try {
+        if (Browser.sidePanel && typeof Browser.sidePanel.setOptions === 'function') {
+          await Browser.sidePanel.setOptions({
+            tabId,
+            path: 'IndependentPanel.html',
+            enabled: true,
+          });
+          console.debug(`[background] Side panel options set for tab ${tabId} using Browser.sidePanel`);
+          sidePanelSet = true;
+        }
+      } catch (browserError) {
+        console.warn('[background] Browser.sidePanel.setOptions failed:', browserError.message);
+        // Fallback will be attempted below if sidePanelSet is still false
       }
-    } catch (error) {
-      console.error('[background] Error in tabs.onUpdated listener callback:', error, tabId, info)
+
+      if (!sidePanelSet) {
+        // eslint-disable-next-line no-undef
+        if (typeof chrome !== 'undefined' && chrome.sidePanel && typeof chrome.sidePanel.setOptions === 'function') {
+          console.debug('[background] Attempting chrome.sidePanel.setOptions as fallback.');
+          try {
+            // eslint-disable-next-line no-undef
+            await chrome.sidePanel.setOptions({
+              tabId,
+              path: 'IndependentPanel.html',
+              enabled: true,
+            });
+            console.debug(`[background] Side panel options set for tab ${tabId} using chrome.sidePanel`);
+            sidePanelSet = true;
+          } catch (chromeError) {
+            console.error('[background] chrome.sidePanel.setOptions also failed:', chromeError.message);
+          }
+        }
+      }
+
+      if (!sidePanelSet) {
+        console.warn('[background] SidePanel API (Browser.sidePanel or chrome.sidePanel) not available or setOptions failed in this browser. Side panel options not set for tab:', tabId);
+      }
+    } catch (error) { // This is the outer try-catch from the original code
+      outerTryCatchError(error);
     }
-  })
+  });
 } catch (error) {
   console.error('[background] Error setting up webRequest or tabs listeners:', error)
 }
