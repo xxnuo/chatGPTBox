@@ -619,13 +619,6 @@ async function overwriteAccessToken() {
   }
 }
 
-async function prepareForForegroundRequests() {
-  // This function is effectively commented out in the previous step's code.
-  // If it were to be used, it would need error handling similar to manageChatGptTabState.
-  // For now, keeping it as a no-op or minimal logging if called.
-  console.debug('[content] prepareForForegroundRequests (old function) called, but should be unused.')
-}
-
 async function getClaudeSessionKey() {
   console.debug('[content] getClaudeSessionKey called.')
   try {
@@ -923,43 +916,3 @@ try {
 }
 
 run()
-
-// Remove or comment out the old prepareForForegroundRequests function
-/*
-async function prepareForForegroundRequests() {
-  if (location.hostname !== 'chatgpt.com' || location.pathname === '/auth/login') return
-
-  const userConfig = await getUserConfig()
-
-  if (
-    !chatgptWebModelKeys.some((model) =>
-      getApiModesStringArrayFromConfig(userConfig, true).includes(model),
-    )
-  )
-    return
-
-  if (location.pathname === '/') {
-    const input = document.querySelector('#prompt-textarea')
-    if (input) {
-      input.textContent = ' '
-      input.dispatchEvent(new Event('input', { bubbles: true }))
-      setTimeout(() => {
-        input.textContent = ''
-        input.dispatchEvent(new Event('input', { bubbles: true }))
-      }, 300)
-    }
-  }
-
-  await Browser.runtime.sendMessage({
-    type: 'SET_CHATGPT_TAB',
-    data: {},
-  })
-
-  registerPortListener(async (session, port) => {
-    if (isUsingChatgptWebModel(session)) {
-      const accessToken = await getChatGptAccessToken()
-      await generateAnswersWithChatgptWebApi(port, session.question, session, accessToken)
-    }
-  })
-}
-*/

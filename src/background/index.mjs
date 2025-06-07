@@ -455,7 +455,6 @@ try {
       console.debug(
         `[background] tabs.onUpdated event for tabId: ${tabId}, status: ${info.status}, url: ${tab.url}`,
       )
-      // eslint-disable-next-line no-undef
       if (chrome && chrome.sidePanel) {
         await chrome.sidePanel.setOptions({
           tabId,
