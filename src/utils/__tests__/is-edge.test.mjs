@@ -49,22 +49,13 @@ describe('isEdge', () => {
     expect(isEdge()).toBe(true);
   });
 
-  // Older Edge versions used "Edge/" (capital "E")
-  test('should return true for older Edge user agent (Edge/)', () => {
-    userAgentSpy.mockReturnValue('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36 Edge/16.16299');
-    // The current function looks for 'edg' (lowercase), so this test should fail unless the function is updated or this test is marked for older versions.
-    // For now, assuming the function is specific to Chromium Edge ('edg').
-    // If the function should support old Edge, it needs to be `toLowerCase().includes('edg') || toLowerCase().includes('edge/')`
-    // Given the current function `toLowerCase().includes('edg')`, this will be false.
-    // This test highlights a potential limitation of the current isEdge function.
-    // Let's assume the current function is for Chromium-based Edge.
-    // To make it pass with current function, the string would need 'edg'.
-    // If the requirement is to detect older Edge, the function needs change.
-    // For now, this will test the current function's behavior accurately.
-    // Corrected expectation: 'edge/'.includes('edg') is true.
+  test('should return true for legacy Edge user agent (Edge/)', () => {
+    userAgentSpy.mockReturnValue(
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
+      '(KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36 Edge/16.16299'
+    );
     expect(isEdge()).toBe(true);
   });
-
 
   test('should return false for Chrome user agent', () => {
     userAgentSpy.mockReturnValue('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');

@@ -2,28 +2,26 @@ import { isFirefox } from '../is-firefox.mjs';
 
 describe('isFirefox', () => {
   let userAgentSpy;
-  let initialUserAgent; // To store the original userAgent if it exists
+  let originalUserAgentDescriptor;
 
   beforeEach(() => {
     if (typeof global.navigator !== 'object' || global.navigator === null) {
-      // If navigator doesn't exist, create a mock one
       global.navigator = {};
     }
 
-    // Store the original userAgent value and its descriptor
-    const descriptor = Object.getOwnPropertyDescriptor(global.navigator, 'userAgent');
-    if (descriptor) {
-      initialUserAgent = descriptor.get ? descriptor.get() : descriptor.value;
-    } else {
-      initialUserAgent = undefined; // Or some default if navigator.userAgent was never there
+    originalUserAgentDescriptor = Object.getOwnPropertyDescriptor(global.navigator, 'userAgent');
+
+    let currentAgent = ''; // Default to empty string or load from originalDescriptor if needed
+    if (originalUserAgentDescriptor && typeof originalUserAgentDescriptor.get === 'function') {
+        currentAgent = originalUserAgentDescriptor.get();
+    } else if (originalUserAgentDescriptor) {
+        currentAgent = originalUserAgentDescriptor.value;
     }
 
-    // Ensure userAgent is defined with a getter and setter for spyOn 'get' to work
-    let currentAgent = initialUserAgent || ''; // Default to empty string if not present
     Object.defineProperty(global.navigator, 'userAgent', {
       get: () => currentAgent,
       set: (value) => { currentAgent = value; },
-      configurable: true,
+      configurable: true, // Crucial for spyOn and for restoring later
     });
 
     userAgentSpy = jest.spyOn(global.navigator, 'userAgent', 'get');
@@ -31,24 +29,13 @@ describe('isFirefox', () => {
 
   afterEach(() => {
     userAgentSpy.mockRestore();
-    // Restore the original userAgent property definition if necessary
-    // This is tricky because the original might not have been a getter/setter
-    // For simplicity, if initialUserAgent was undefined, we can delete it.
-    // Or, redefine it based on its original state if that's critical.
-    // Often, just restoring the spy is enough for isolated tests.
-    // If global.navigator.userAgent was originally a value property:
-    if (initialUserAgent !== undefined) {
-         Object.defineProperty(global.navigator, 'userAgent', {
-            value: initialUserAgent,
-            configurable: true,
-            writable: true, // Assuming it was writable
-        });
+    // Attempt to restore the original userAgent property definition
+    if (originalUserAgentDescriptor) {
+      Object.defineProperty(global.navigator, 'userAgent', originalUserAgentDescriptor);
     } else {
-        // If it didn't exist, or to be very clean, delete it
-        delete global.navigator.userAgent;
+      // If it didn't exist before we defined it, we can delete it.
+      delete global.navigator.userAgent;
     }
-    // If global.navigator itself was created, it might need cleanup too,
-    // but that's more involved and depends on test environment expectations.
   });
 
   test('should return true for Firefox user agent', () => {

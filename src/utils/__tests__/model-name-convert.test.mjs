@@ -195,7 +195,7 @@ describe('model-name-convert', () => {
       expect(modelNameToDesc('claude-fast', t)).toBe('Claude Base (Fast Mode)');
 
       // Restore actualMockModels if changed
-      delete actualMockModels['claude'];
+      actualMockModels['claude'] = undefined;
       actualMockModels['claude-2'] = originalClaude;
 
       // Test with a preset part that IS in Models and custom part NOT in ModelMode
@@ -203,7 +203,7 @@ describe('model-name-convert', () => {
       // modelNameToCustomPart('claude-custom-variant') -> 'custom-variant'
       actualMockModels['claude'] = { desc: "Claude Base", value: "claude"}; // Ensure 'claude' is there
       expect(modelNameToDesc('claude-custom-variant', t)).toBe('Claude Base (custom-variant)');
-      delete actualMockModels['claude'];
+      actualMockModels['claude'] = undefined;
     });
 
     test('should construct description for custom model names based on group and custom part', () => {
