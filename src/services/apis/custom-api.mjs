@@ -9,7 +9,7 @@ import { getUserConfig } from '../../config/index.mjs'
 import { fetchSSE } from '../../utils/fetch-sse.mjs'
 import { getConversationPairs } from '../../utils/get-conversation-pairs.mjs'
 import { isEmpty } from 'lodash-es'
-import { pushRecord, setAbortController } from './shared.mjs'
+import { getChatSystemPromptBase, pushRecord, setAbortController } from './shared.mjs'
 
 /**
  * @param {Browser.Runtime.Port} port
@@ -30,11 +30,14 @@ export async function generateAnswersWithCustomApi(
   const { controller, messageListener, disconnectListener } = setAbortController(port)
 
   const config = await getUserConfig()
-  const prompt = getConversationPairs(
+  const systemMessage = await getChatSystemPromptBase();
+  const apiMessages = [{ role: 'system', content: systemMessage }];
+  const conversationMessages = getConversationPairs(
     session.conversationRecords.slice(-config.maxConversationContextLength),
     false,
-  )
-  prompt.push({ role: 'user', content: question })
+  );
+  apiMessages.push(...conversationMessages);
+  apiMessages.push({ role: 'user', content: question });
 
   let answer = ''
   let finished = false
@@ -52,7 +55,7 @@ export async function generateAnswersWithCustomApi(
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      messages: prompt,
+      messages: apiMessages,
       model: modelName,
       stream: true,
       max_tokens: config.maxResponseTokenLength,

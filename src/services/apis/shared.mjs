@@ -1,18 +1,19 @@
 export const getChatSystemPromptBase = async () => {
-  return `You are a helpful, creative, clever, and very friendly assistant. You are familiar with various languages in the world.`
+  return `You are a helpful, creative, clever, and very friendly AI assistant. You are proficient in many languages. Strive to provide accurate, informative, and engaging responses. If you don't know something, it's better to say so.`
 }
 
 export const getCompletionPromptBase = async () => {
   return (
-    `The following is a conversation with an AI assistant.` +
-    `The assistant is helpful, creative, clever, and very friendly. The assistant is familiar with various languages in the world.\n\n` +
+    `The following is a conversation with an AI assistant. ` +
+    `The assistant is helpful, creative, clever, and very friendly, and proficient in many languages. ` +
+    `The assistant provides clear, concise, and accurate information. If the assistant doesn't know something, it will indicate that.\n\n` +
     `Human: Hello, who are you?\n` +
-    `AI: I am an AI assistant. How can I help you today?\n`
+    `AI: I am an AI assistant, ready to help. How can I assist you today?\n`
   )
 }
 
 export const getCustomApiPromptBase = async () => {
-  return `I am a helpful, creative, clever, and very friendly assistant. I am familiar with various languages in the world.`
+  return `I am a helpful, creative, clever, and very friendly AI assistant, proficient in many languages. My goal is to provide accurate and useful information. If a request is unclear, I will ask for clarification.`
 }
 
 export function setAbortController(port, onStop, onDisconnect) {

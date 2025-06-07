@@ -4,7 +4,7 @@ import { getUserConfig } from '../../config/index.mjs'
 import { fetchSSE } from '../../utils/fetch-sse.mjs'
 import { getConversationPairs } from '../../utils/get-conversation-pairs.mjs'
 import { isEmpty } from 'lodash-es'
-import { getCompletionPromptBase, pushRecord, setAbortController } from './shared.mjs'
+import { getChatSystemPromptBase, getCompletionPromptBase, pushRecord, setAbortController } from './shared.mjs'
 import { getModelValue } from '../../utils/model-name-convert.mjs'
 
 /**
@@ -118,11 +118,14 @@ export async function generateAnswersWithChatgptApiCompat(
   const model = getModelValue(session)
 
   const config = await getUserConfig()
-  const prompt = getConversationPairs(
+  const systemMessage = await getChatSystemPromptBase();
+  const apiMessages = [{ role: 'system', content: systemMessage }];
+  const conversationMessages = getConversationPairs(
     session.conversationRecords.slice(-config.maxConversationContextLength),
     false,
-  )
-  prompt.push({ role: 'user', content: question })
+  );
+  apiMessages.push(...conversationMessages);
+  apiMessages.push({ role: 'user', content: question });
 
   let answer = ''
   let finished = false
@@ -140,7 +143,7 @@ export async function generateAnswersWithChatgptApiCompat(
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      messages: prompt,
+      messages: apiMessages,
       model,
       stream: true,
       max_tokens: config.maxResponseTokenLength,
