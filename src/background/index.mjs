@@ -54,14 +54,34 @@ import { isUsingModelName } from '../utils/model-name-convert.mjs'
 function setPortProxy(port, proxyTabId) {
   try {
     console.debug(`[background] Attempting to connect to proxy tab: ${proxyTabId}`)
+    // Define listeners here so they can be referenced for removal
+    // These will be port-specific if setPortProxy is called for different ports.
+    // However, a single port object is typically used per connection instance from the other side.
+    // The issue arises if `setPortProxy` is called multiple times on the *same* port object for reconnections.
+
+    // Ensure old listeners on port.proxy are removed if it exists (e.g. from a previous failed attempt on this same port object)
+    if (port.proxy) {
+        try {
+            if (port._proxyOnMessage) port.proxy.onMessage.removeListener(port._proxyOnMessage);
+            if (port._proxyOnDisconnect) port.proxy.onDisconnect.removeListener(port._proxyOnDisconnect);
+        } catch(e) {
+            console.warn('[background] Error removing old listeners from previous port.proxy:', e);
+        }
+    }
+    // Also remove listeners from the main port object that this function might have added
+    if (port._portOnMessage) port.onMessage.removeListener(port._portOnMessage);
+    if (port._portOnDisconnect) port.onDisconnect.removeListener(port._portOnDisconnect);
+
+
     port.proxy = Browser.tabs.connect(proxyTabId, { name: 'background-to-content-script-proxy' })
     console.log(`[background] Successfully connected to proxy tab: ${proxyTabId}`)
+    port._reconnectAttempts = 0 // Reset retry count on successful connection
 
-    const proxyOnMessage = (msg) => {
+    port._proxyOnMessage = (msg) => {
       console.debug('[background] Message from proxy tab:', msg)
       port.postMessage(msg)
     }
-    const portOnMessage = (msg) => {
+    port._portOnMessage = (msg) => {
       console.debug('[background] Message to proxy tab:', msg)
       if (port.proxy) {
         port.proxy.postMessage(msg)
@@ -69,28 +89,66 @@ function setPortProxy(port, proxyTabId) {
         console.warn('[background] Port proxy not available to send message:', msg)
       }
     }
-    const proxyOnDisconnect = () => {
-      console.warn(`[background] Proxy tab ${proxyTabId} disconnected. Attempting to reconnect.`)
-      port.proxy = null // Clear the old proxy
-      // Potentially add a delay or retry limit here
-      setPortProxy(port, proxyTabId) // Reconnect
-    }
-    const portOnDisconnect = () => {
-      console.log('[background] Main port disconnected from other end.')
+
+    const MAX_RECONNECT_ATTEMPTS = 5;
+
+    port._proxyOnDisconnect = () => {
+      console.warn(`[background] Proxy tab ${proxyTabId} disconnected.`)
+
+      // Cleanup this specific proxy's listeners
       if (port.proxy) {
-        console.debug('[background] Removing listeners from proxy port.')
-        port.proxy.onMessage.removeListener(proxyOnMessage)
-        port.onMessage.removeListener(portOnMessage)
-        port.proxy.onDisconnect.removeListener(proxyOnDisconnect)
-        port.onDisconnect.removeListener(portOnDisconnect)
-        // port.proxy.disconnect() // Optionally disconnect the proxy port if the main port is gone
+        port.proxy.onMessage.removeListener(port._proxyOnMessage);
+        port.proxy.onDisconnect.removeListener(port._proxyOnDisconnect); // remove self
       }
+      port.proxy = null // Clear the old proxy
+
+      port._reconnectAttempts = (port._reconnectAttempts || 0) + 1;
+      if (port._reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
+        console.error(`[background] Max reconnect attempts (${MAX_RECONNECT_ATTEMPTS}) reached for tab ${proxyTabId}. Giving up.`);
+        // Important: also clean up listeners on the main 'port' object associated with this proxy connection
+        if (port._portOnMessage) port.onMessage.removeListener(port._portOnMessage);
+        // Do not remove port._portOnDisconnect here as it might be the generic one for the *other* end.
+        // This needs careful thought: is portOnDisconnect for THIS proxy instance or for the overall port?
+        // Assuming port.onDisconnect is for the connection that initiated this proxy.
+        // If that disconnects, it should clean up its own _portOnMessage and _proxyOnMessage etc.
+        return;
+      }
+
+      const delay = Math.pow(2, port._reconnectAttempts - 1) * 1000; // Exponential backoff
+      console.log(`[background] Attempting reconnect #${port._reconnectAttempts} in ${delay / 1000}s for tab ${proxyTabId}.`)
+
+      setTimeout(() => {
+        console.debug(`[background] Retrying connection to tab ${proxyTabId}, attempt ${port._reconnectAttempts}.`);
+        setPortProxy(port, proxyTabId); // Reconnect (will add new listeners)
+      }, delay);
     }
 
-    port.proxy.onMessage.addListener(proxyOnMessage)
-    port.onMessage.addListener(portOnMessage)
-    port.proxy.onDisconnect.addListener(proxyOnDisconnect)
-    port.onDisconnect.addListener(portOnDisconnect)
+    // This is the handler for when the *other* end of the 'port' disconnects (e.g. the popup closes)
+    // It should clean up everything related to this 'port's proxying activity.
+    port._portOnDisconnect = () => {
+      console.log('[background] Main port disconnected (e.g. popup/sidebar closed). Cleaning up proxy connections and listeners.');
+      if (port._portOnMessage) port.onMessage.removeListener(port._portOnMessage);
+      if (port.proxy) {
+        if (port._proxyOnMessage) port.proxy.onMessage.removeListener(port._proxyOnMessage);
+        if (port._proxyOnDisconnect) port.proxy.onDisconnect.removeListener(port._proxyOnDisconnect);
+        try {
+            port.proxy.disconnect(); // Disconnect the connection to the content script
+        } catch(e) {
+            console.warn('[background] Error disconnecting port.proxy:', e);
+        }
+        port.proxy = null;
+      }
+      // Remove self
+      if (port._portOnDisconnect) port.onDisconnect.removeListener(port._portOnDisconnect);
+      // Reset for potential future use of this port object if it's somehow reused (though typically new port objects are made)
+      port._reconnectAttempts = 0;
+    }
+
+    port.proxy.onMessage.addListener(port._proxyOnMessage)
+    port.onMessage.addListener(port._portOnMessage) // For messages from the other end to be proxied
+    port.proxy.onDisconnect.addListener(port._proxyOnDisconnect) // When content script/tab proxy disconnects
+    port.onDisconnect.addListener(port._portOnDisconnect) // When the other end (popup/sidebar) disconnects
+
   } catch (error) {
     console.error(`[background] Error in setPortProxy for tab ${proxyTabId}:`, error)
   }
@@ -101,7 +159,21 @@ async function executeApi(session, port, config) {
     `[background] executeApi called for model: ${session.modelName}, apiMode: ${session.apiMode}`,
   )
   console.debug('[background] Full session details:', session)
-  console.debug('[background] Full config details:', config)
+  // Redact sensitive config details before logging
+  const redactedConfig = { ...config };
+  if (redactedConfig.apiKey) redactedConfig.apiKey = 'REDACTED';
+  if (redactedConfig.customApiKey) redactedConfig.customApiKey = 'REDACTED';
+  if (redactedConfig.claudeApiKey) redactedConfig.claudeApiKey = 'REDACTED';
+  if (redactedConfig.kimiMoonShotRefreshToken) redactedConfig.kimiMoonShotRefreshToken = 'REDACTED';
+  // Add any other sensitive keys that might exist in 'config' or 'session.apiMode'
+  if (session.apiMode && session.apiMode.apiKey) {
+    redactedConfig.apiMode = { ...session.apiMode, apiKey: 'REDACTED' };
+  } else if (session.apiMode) {
+    redactedConfig.apiMode = { ...session.apiMode };
+  }
+
+
+  console.debug('[background] Redacted config details:', redactedConfig)
 
   try {
     if (isUsingCustomModel(session)) {
@@ -435,7 +507,7 @@ try {
           error,
           details,
         )
-        return {} // Return empty object or original headers on error?
+        return { requestHeaders: details.requestHeaders } // Return original headers on error
       }
     },
     {
@@ -448,22 +520,40 @@ try {
 
   Browser.tabs.onUpdated.addListener(async (tabId, info, tab) => {
     try {
-      if (!tab.url || !info.url) { // Check if tab.url or info.url is present, as onUpdated can fire for various reasons
-        // console.debug('[background] onUpdated event without URL, skipping side panel update for tab:', tabId, info);
+      // Refined condition: Ensure URL exists and tab loading is complete.
+      if (!tab.url || (info.status && info.status !== 'complete')) {
+        console.debug(
+          `[background] Skipping side panel update for tabId: ${tabId}. Tab URL: ${tab.url}, Info Status: ${info.status}`,
+        )
         return
       }
       console.debug(
-        `[background] tabs.onUpdated event for tabId: ${tabId}, status: ${info.status}, url: ${tab.url}`,
+        `[background] tabs.onUpdated event for tabId: ${tabId}, status: ${info.status}, url: ${tab.url}. Proceeding with side panel update.`,
       )
-      if (chrome && chrome.sidePanel) {
-        await chrome.sidePanel.setOptions({
+      // Use Browser.sidePanel from webextension-polyfill for consistency and cross-browser compatibility
+      if (Browser.sidePanel) {
+        await Browser.sidePanel.setOptions({
           tabId,
           path: 'IndependentPanel.html',
           enabled: true,
         })
-        console.debug(`[background] Side panel options set for tab ${tabId}`)
+        console.debug(`[background] Side panel options set for tab ${tabId} using Browser.sidePanel`)
       } else {
-        console.debug('[background] chrome.sidePanel API not available.')
+        // Fallback or log if Browser.sidePanel is somehow not available (though polyfill should handle it)
+        console.debug('[background] Browser.sidePanel API not available. Attempting chrome.sidePanel as fallback.')
+        // Keeping the original chrome check as a fallback, though ideally Browser.sidePanel should work.
+        // eslint-disable-next-line no-undef
+        if (chrome && chrome.sidePanel) {
+          // eslint-disable-next-line no-undef
+          await chrome.sidePanel.setOptions({
+            tabId,
+            path: 'IndependentPanel.html',
+            enabled: true,
+          })
+          console.debug(`[background] Side panel options set for tab ${tabId} using chrome.sidePanel`)
+        } else {
+          console.debug('[background] chrome.sidePanel API also not available.')
+        }
       }
     } catch (error) {
       console.error('[background] Error in tabs.onUpdated listener callback:', error, tabId, info)

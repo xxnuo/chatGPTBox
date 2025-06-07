@@ -654,34 +654,46 @@ async function prepareForJumpBackNotification() {
         let claudeSession = await getClaudeSessionKey()
         if (!claudeSession) {
           console.log('[content] Claude session key not found, waiting for it...')
+          let promiseSettled = false
           await new Promise((resolve, reject) => {
             const timer = setInterval(async () => {
+              if (promiseSettled) {
+                clearInterval(timer); // Ensure timer is cleared if settled by timeout
+                return;
+              }
               try {
                 claudeSession = await getClaudeSessionKey()
                 if (claudeSession) {
-                  clearInterval(timer)
-                  console.log('[content] Claude session key found after waiting.')
-                  resolve()
+                  if (!promiseSettled) {
+                    promiseSettled = true
+                    clearInterval(timer)
+                    console.log('[content] Claude session key found after waiting.')
+                    resolve()
+                  }
                 }
               } catch (err) {
-                // This inner catch is for getClaudeSessionKey failing during setInterval
                 console.error('[content] Error polling for Claude session key:', err)
-                // Optionally, clearInterval and reject if it's a persistent issue.
+                // Optionally, if error is critical, settle promise
+                // if (!promiseSettled) {
+                //   promiseSettled = true;
+                //   clearInterval(timer);
+                //   reject(err);
+                // }
               }
             }, 500)
             // Timeout for waiting
             setTimeout(() => {
-                clearInterval(timer);
-                if (!claudeSession) {
-                    console.warn("[content] Timed out waiting for Claude session key.");
-                    reject(new Error("Timed out waiting for Claude session key."));
-                }
-            }, 30000); // 30 second timeout
-          }).catch(err => { // Catch rejection from the Promise itself (e.g. timeout)
-            console.error("[content] Failed to get Claude session key for jump back notification:", err);
-            // Do not proceed to render if session key is critical and not found
-            return;
-          });
+              if (!promiseSettled) {
+                promiseSettled = true
+                clearInterval(timer)
+                console.warn('[content] Timed out waiting for Claude session key.')
+                reject(new Error('Timed out waiting for Claude session key.'))
+              }
+            }, 30000) // 30 second timeout
+          }).catch((err) => {
+            console.error('[content] Failed to get Claude session key for jump back notification:', err)
+            return // Do not proceed to render if session key is critical and not found
+          })
         } else {
           console.log('[content] Claude session key found immediately.')
         }
@@ -704,32 +716,46 @@ async function prepareForJumpBackNotification() {
             }
           }, 1000)
 
+          let promiseSettled = false
           await new Promise((resolve, reject) => {
             const timer = setInterval(async () => {
+              if (promiseSettled) {
+                clearInterval(timer);
+                return;
+              }
               try {
                 const token = window.localStorage.refresh_token
                 if (token) {
-                  clearInterval(timer)
-                  console.log('[content] Kimi refresh token found after waiting.')
-                  await setUserConfig({ kimiMoonShotRefreshToken: token })
-                  console.log('[content] Kimi refresh token saved to config.')
-                  resolve()
+                  if (!promiseSettled) {
+                    promiseSettled = true
+                    clearInterval(timer)
+                    console.log('[content] Kimi refresh token found after waiting.')
+                    await setUserConfig({ kimiMoonShotRefreshToken: token })
+                    console.log('[content] Kimi refresh token saved to config.')
+                    resolve()
+                  }
                 }
               } catch (err_set) {
-                 console.error('[content] Error setting Kimi refresh token from polling:', err_set)
+                console.error('[content] Error setting Kimi refresh token from polling:', err_set)
+                // if (!promiseSettled) {
+                //   promiseSettled = true;
+                //   clearInterval(timer);
+                //   reject(err_set);
+                // }
               }
             }, 500)
-             setTimeout(() => {
-                clearInterval(timer);
-                if (!window.localStorage.refresh_token) {
-                    console.warn("[content] Timed out waiting for Kimi refresh token.");
-                    reject(new Error("Timed out waiting for Kimi refresh token."));
-                }
-            }, 30000); // 30 second timeout
-          }).catch(err => {
-            console.error("[content] Failed to get Kimi refresh token for jump back notification:", err);
-            return; // Do not proceed
-          });
+            setTimeout(() => {
+              if (!promiseSettled) {
+                promiseSettled = true
+                clearInterval(timer)
+                console.warn('[content] Timed out waiting for Kimi refresh token.')
+                reject(new Error('Timed out waiting for Kimi refresh token.'))
+              }
+            }, 30000) // 30 second timeout
+          }).catch((err) => {
+            console.error('[content] Failed to get Kimi refresh token for jump back notification:', err)
+            return // Do not proceed
+          })
         } else {
           console.log('[content] Kimi refresh token found in localStorage.')
           // Ensure it's in config if found immediately
@@ -833,13 +859,13 @@ async function manageChatGptTabState() {
       if (location.pathname === '/') {
         console.debug('[content] On chatgpt.com root path.')
         const input = document.querySelector('#prompt-textarea')
-        if (input && input.textContent === '') {
+        if (input && input.value === '') { // Check input.value instead of input.textContent
           console.log('[content] Manipulating #prompt-textarea for focus.')
-          input.textContent = ' '
+          input.value = ' ' // Set input.value
           input.dispatchEvent(new Event('input', { bubbles: true }))
           setTimeout(() => {
-            if (input.textContent === ' ') {
-              input.textContent = ''
+            if (input.value === ' ') { // Check input.value
+              input.value = '' // Set input.value
               input.dispatchEvent(new Event('input', { bubbles: true }))
               console.debug('[content] #prompt-textarea manipulation complete.')
             }
@@ -867,52 +893,57 @@ async function manageChatGptTabState() {
 
 // Register the port listener once if on the correct domain.
 // This sets up the Browser.runtime.onConnect listener.
-try {
-  if (location.hostname === 'chatgpt.com' && location.pathname !== '/auth/login') {
-    console.log('[content] Attempting to register port listener for chatgpt.com.')
-    registerPortListener(async (session, port) => {
-      console.debug(
-        `[content] Port listener callback triggered. Session:`,
-        session,
-        `Port:`,
-        port.name,
-      )
-      try {
-        if (isUsingChatgptWebModel(session)) {
-          console.log(
-            '[content] Session is for ChatGPT Web Model, processing request for question:',
-            session.question,
-          )
-          const accessToken = await getChatGptAccessToken()
-          if (!accessToken) {
-            console.warn('[content] No ChatGPT access token available for web API call.')
-            port.postMessage({ error: 'Missing ChatGPT access token.' })
-            return
-          }
-          await generateAnswersWithChatgptWebApi(port, session.question, session, accessToken)
-          console.log('[content] generateAnswersWithChatgptWebApi call completed.')
-        } else {
-          console.debug(
-            '[content] Session is not for ChatGPT Web Model, skipping processing in this listener.',
-          )
-        }
-      } catch (e) {
-        console.error('[content] Error in port listener callback:', e, 'Session:', session)
+if (!window.__chatGPTBoxPortListenerRegistered) {
+  try {
+    if (location.hostname === 'chatgpt.com' && location.pathname !== '/auth/login') {
+      console.log('[content] Attempting to register port listener for chatgpt.com.')
+      registerPortListener(async (session, port) => {
+        console.debug(
+          `[content] Port listener callback triggered. Session:`,
+          session,
+          `Port:`,
+          port.name,
+        )
         try {
-          port.postMessage({ error: e.message || 'An unexpected error occurred in content script port listener.' })
-        } catch (postError) {
-          console.error('[content] Error sending error message back via port:', postError)
+          if (isUsingChatgptWebModel(session)) {
+            console.log(
+              '[content] Session is for ChatGPT Web Model, processing request for question:',
+              session.question,
+            )
+            const accessToken = await getChatGptAccessToken()
+            if (!accessToken) {
+              console.warn('[content] No ChatGPT access token available for web API call.')
+              port.postMessage({ error: 'Missing ChatGPT access token.' })
+              return
+            }
+            await generateAnswersWithChatgptWebApi(port, session.question, session, accessToken)
+            console.log('[content] generateAnswersWithChatgptWebApi call completed.')
+          } else {
+            console.debug(
+              '[content] Session is not for ChatGPT Web Model, skipping processing in this listener.',
+            )
+          }
+        } catch (e) {
+          console.error('[content] Error in port listener callback:', e, 'Session:', session)
+          try {
+            port.postMessage({ error: e.message || 'An unexpected error occurred in content script port listener.' })
+          } catch (postError) {
+            console.error('[content] Error sending error message back via port:', postError)
+          }
         }
-      }
-    })
-    console.log('[content] Generic port listener registered successfully for chatgpt.com pages.')
-  } else {
-    console.debug(
-      '[content] Not on chatgpt.com or on login page, skipping port listener registration.',
-    )
+      })
+      console.log('[content] Generic port listener registered successfully for chatgpt.com pages.')
+      window.__chatGPTBoxPortListenerRegistered = true
+    } else {
+      console.debug(
+        '[content] Not on chatgpt.com or on login page, skipping port listener registration.',
+      )
+    }
+  } catch (error) {
+    console.error('[content] Error registering global port listener:', error)
   }
-} catch (error) {
-  console.error('[content] Error registering global port listener:', error)
+} else {
+  console.log('[content] Port listener already registered, skipping.')
 }
 
 run()
