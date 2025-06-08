@@ -77,14 +77,14 @@ describe('isEdge', () => {
     expect(isEdge()).toBe(false);
   });
 
-  test('should throw TypeError when userAgent is null', () => {
+  test('should return false when userAgent is null', () => {
     userAgentSpy.mockReturnValue(null);
-    expect(() => isEdge()).toThrow(TypeError);
+    expect(isEdge()).toBe(false);
   });
 
-  test('should throw TypeError when userAgent is undefined', () => {
+  test('should return false when userAgent is undefined', () => {
     userAgentSpy.mockReturnValue(undefined);
-    expect(() => isEdge()).toThrow(TypeError);
+    expect(isEdge()).toBe(false);
   });
 
 });

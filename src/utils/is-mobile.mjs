@@ -8,7 +8,10 @@ export function isMobile() {
   let check = false;
   const a = navigator.userAgent || navigator.vendor || window.opera;
 
-  if (!a) { // Handle cases where 'a' (userAgent/vendor/opera) might be null, undefined, or empty
+  // Prevent TypeError when userAgent/vendor/opera is null or undefined, or if all are empty strings.
+  // The `substr` method on an empty string is fine, but `test` on an empty string might not be what's intended
+  // if the regex expects some content. However, the primary goal here is to prevent TypeErrors from null/undefined.
+  if (!a) {
     return false; // check is already false, so just return
   }
 

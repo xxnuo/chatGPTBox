@@ -8,14 +8,14 @@ import {
   isClaude3,
   modelNameToValue,
   getModelValue,
-  modelNameToApiMode,
+  modelNameToApiMode, // Restored
   getApiModesFromConfig,
   getApiModesStringArrayFromConfig,
   isApiModeSelected,
-  isUsingModelName,
+  isUsingModelName, // Restored
   getModelNameGroup,
   getApiModeGroup,
-  isInApiModeGroup,
+  isInApiModeGroup, // Restored
 } from '../model-name-convert.mjs';
 
 // Define the actual mock data objects at the top level.
@@ -45,9 +45,7 @@ const actualMockModelMode = {
   'good': 'Good Mode',
 };
 
-// Mock the imports from '../config/index.mjs'
-// The factory function now refers to the 'actualMock*' variables defined above.
-// These are const and their definitions are not hoisted past by jest.mock in a problematic way.
+// Initial top-level mock for config/index.mjs
 jest.mock('../../config/index.mjs', () => ({
   Models: actualMockModels,
   ModelGroups: actualMockModelGroups,
@@ -56,47 +54,39 @@ jest.mock('../../config/index.mjs', () => ({
 }));
 
 // Helper for translation, as used in modelNameToDesc
-const t = (key) => key; // Simple pass-through for testing
+const t = (key) => key;
 
 describe('model-name-convert', () => {
-  // ... [previously passing tests remain unchanged] ...
+  // Tests for functions that don't require mock modification can use top-level imports
   describe('apiModeToModelName', () => {
     test('should convert standard API mode to item name', () => {
       const apiMode = { groupName: 'openAi', itemName: 'gpt-4', isCustom: false, customName: '' };
       expect(apiModeToModelName(apiMode)).toBe('gpt-4');
     });
-
     test('should convert custom API mode (item based) to item-customName', () => {
       const apiMode = { groupName: 'openAi', itemName: 'gpt-4', isCustom: true, customName: 'my-gpt4' };
       expect(apiModeToModelName(apiMode)).toBe('gpt-4-my-gpt4');
     });
-
     test('should convert custom API mode (group based, item is "custom") to group-customName', () => {
       const apiMode = { groupName: 'openAi', itemName: 'custom', isCustom: true, customName: 'my-custom-openai' };
       expect(apiModeToModelName(apiMode)).toBe('openAi-my-custom-openai');
     });
-
     test('should convert API mode for AlwaysCustomGroups to groupName-customName', () => {
       const apiModeAzure = { groupName: 'azure', itemName: 'azureOpenAi', isCustom: true, customName: 'my-azure-deployment' };
       expect(apiModeToModelName(apiModeAzure)).toBe('azure-my-azure-deployment');
-
       const apiModeOllama = { groupName: 'ollamaG', itemName: 'ollama', isCustom: true, customName: 'llama2' };
       expect(apiModeToModelName(apiModeOllama)).toBe('ollamaG-llama2');
-
       const apiModeCustomGroup = { groupName: 'custom', itemName: 'customModel', isCustom: true, customName: 'my-api' };
       expect(apiModeToModelName(apiModeCustomGroup)).toBe('custom-my-api');
     });
-
     test('should handle non-custom API mode within an AlwaysCustomGroup (should still produce group-custom, assuming customName is populated)', () => {
       const apiMode = { groupName: 'azure', itemName: 'azureOpenAi', isCustom: false, customName: 'test-deploy' };
       expect(apiModeToModelName(apiMode)).toBe('azure-test-deploy');
     });
-
     test('should handle API mode where itemName is not "custom" but isCustom is true, not in AlwaysCustomGroups', () => {
         const apiMode = { groupName: 'anthropic', itemName: 'claude-2', isCustom: true, customName: 'tuned-claude' };
         expect(apiModeToModelName(apiMode)).toBe('claude-2-tuned-claude');
     });
-
     test('should return just itemName if not custom and not in AlwaysCustomGroups', () => {
         const apiMode = { groupName: 'anthropic', itemName: 'claude-3-opus', isCustom: false, customName: '' };
         expect(apiModeToModelName(apiMode)).toBe('claude-3-opus');
@@ -108,7 +98,6 @@ describe('model-name-convert', () => {
       expect(isCustomModelName('gpt-4-custom')).toBe(true);
       expect(isCustomModelName('azure-myDeployment')).toBe(true);
     });
-
     test('should return false for names not containing "-"', () => {
       expect(isCustomModelName('gpt4')).toBe(false);
       expect(isCustomModelName('claude2')).toBe(false);
@@ -116,7 +105,6 @@ describe('model-name-convert', () => {
       expect(isCustomModelName('claude-2')).toBe(true);
       expect(isCustomModelName('gpt-3.5-turbo')).toBe(true);
     });
-
     test('should return false for empty, null, or undefined names', () => {
       expect(isCustomModelName('')).toBe(false);
       expect(isCustomModelName(null)).toBe(false);
@@ -130,7 +118,6 @@ describe('model-name-convert', () => {
       expect(modelNameToPresetPart('azure-myDeployment')).toBe('azure');
       expect(modelNameToPresetPart('claude-3-opus-custom')).toBe('claude');
     });
-
     test('should return the full name if not custom (by current isCustomModelName def)', () => {
       expect(modelNameToPresetPart('gpt4')).toBe('gpt4');
       expect(modelNameToPresetPart('claude2')).toBe('claude2');
@@ -145,12 +132,10 @@ describe('model-name-convert', () => {
       expect(modelNameToCustomPart('azure-myDeployment')).toBe('myDeployment');
       expect(modelNameToCustomPart('claude-3-opus-custom')).toBe('3-opus-custom');
     });
-
     test('should return the full name if not custom (by current isCustomModelName def)', () => {
       expect(modelNameToCustomPart('gpt4')).toBe('gpt4');
       expect(modelNameToCustomPart('gpt-4')).toBe('4');
     });
-
     test('should handle names with multiple hyphens correctly (based on current logic)', () => {
       expect(modelNameToCustomPart('claude-3-opus-20240229')).toBe('3-opus-20240229');
       expect(modelNameToPresetPart('claude-3-opus-20240229')).toBe('claude');
@@ -163,58 +148,50 @@ describe('model-name-convert', () => {
       expect(modelNameToDesc('claude-2', t)).toBe('Claude 2 (Anthropic)');
       expect(modelNameToDesc('gpt-3.5-turbo', t)).toBe(actualMockModels['gpt-3.5-turbo'].desc);
     });
-
     test('should return custom model description with extra name', () => {
       expect(modelNameToDesc('customModel', t, 'MySpecialAPI')).toBe('Custom Model (MySpecialAPI)');
     });
-
     test('should return original description for customModel if no extra name', () => {
       expect(modelNameToDesc('customModel', t, '')).toBe('Custom Model');
     });
 
-    // Reverting this test to direct mock modification with try/finally
-    test('should construct description for custom model names (based on current helper logic)', () => {
-      const originalClaudeVal = actualMockModels['claude']; // Store original value if 'claude' key exists
-      const originalClaude2Val = actualMockModels['claude-2']; // Store 'claude-2' to ensure it's restored
-
-      try {
-        // Test case 1: presetPart in Models, customPart in ModelMode
-        actualMockModels['claude'] = { desc: "Claude Base", value: "claude" };
-        expect(modelNameToDesc('claude-fast', t)).toBe('Claude Base (Fast Mode)');
-
-        // Test case 2: presetPart in Models, customPart NOT in ModelMode
-        expect(modelNameToDesc('claude-200k', t)).toBe('Claude Base (200k)');
-
-        // Test case 3: presetPart in Models, customPart also NOT in ModelMode
-        expect(modelNameToDesc('claude-custom-variant', t)).toBe('Claude Base (custom-variant)');
-      } finally {
-        // Restore original state
-        if (originalClaudeVal === undefined) {
-          delete actualMockModels['claude'];
-        } else {
-          actualMockModels['claude'] = originalClaudeVal;
-        }
-        actualMockModels['claude-2'] = originalClaude2Val; // Ensure claude-2 is always restored
-      }
+    test('should construct description for custom model names (based on current helper logic)', async () => {
+      await jest.isolateModulesAsync(async () => {
+        const localModelsCopy = JSON.parse(JSON.stringify(actualMockModels));
+        localModelsCopy['claude'] = { desc: "Claude Base", value: "claude" };
+        jest.doMock('../../config/index.mjs', () => ({ Models: localModelsCopy, ModelGroups: actualMockModelGroups, ModelMode: actualMockModelMode, AlwaysCustomGroups: actualMockAlwaysCustomGroups }));
+        const { modelNameToDesc: localFunc } = await import('../model-name-convert.mjs');
+        expect(localFunc('claude-fast', t)).toBe('Claude Base (Fast Mode)');
+      });
+      await jest.isolateModulesAsync(async () => {
+        const localModelsCopy = JSON.parse(JSON.stringify(actualMockModels));
+        localModelsCopy['claude'] = { desc: "Claude Base", value: "claude" };
+        jest.doMock('../../config/index.mjs', () => ({ Models: localModelsCopy, ModelGroups: actualMockModelGroups, ModelMode: actualMockModelMode, AlwaysCustomGroups: actualMockAlwaysCustomGroups }));
+        const { modelNameToDesc: localFunc } = await import('../model-name-convert.mjs');
+        expect(localFunc('claude-200k', t)).toBe('Claude Base (200k)');
+      });
+      await jest.isolateModulesAsync(async () => {
+        const localModelsCopy = JSON.parse(JSON.stringify(actualMockModels));
+        localModelsCopy['claude'] = { desc: "Claude Base", value: "claude" };
+        jest.doMock('../../config/index.mjs', () => ({ Models: localModelsCopy, ModelGroups: actualMockModelGroups, ModelMode: actualMockModelMode, AlwaysCustomGroups: actualMockAlwaysCustomGroups }));
+        const { modelNameToDesc: localFunc } = await import('../model-name-convert.mjs');
+        expect(localFunc('claude-custom-variant', t)).toBe('Claude Base (custom-variant)');
+      });
     });
 
     test('should construct description for custom model names based on group and custom part', () => {
       expect(modelNameToDesc('openAi-customized-model', t)).toBe('OpenAI (customized-model)');
     });
-
     test('should return the name itself if not in Models and not a recognized custom structure', () => {
       expect(modelNameToDesc('unknown-model', t)).toBe('unknown-model');
       expect(modelNameToDesc('somegroup-custom', t)).toBe('somegroup-custom');
     });
-
     test('should handle model names that look custom but preset part is not in Models or ModelGroups', () => {
       expect(modelNameToDesc('newModel-variant', t)).toBe('newModel-variant');
     });
-
     test('should return model name if t function is not provided (graceful fallback)', () => {
         expect(modelNameToDesc('gpt-4')).toBe('GPT-4 (OpenAI)');
     });
-
     test('should handle null or undefined model names by returning them as is', () => {
       expect(modelNameToDesc(null, t)).toBe(null);
       expect(modelNameToDesc(undefined, t)).toBe(undefined);
@@ -229,19 +206,16 @@ describe('model-name-convert', () => {
       expect(isGPT4('gpt-4-1106-preview')).toBe(true);
       expect(isGPT4('gpt-4-vision-preview')).toBe(true);
     });
-
     test('should return false for non-gpt-4 model names', () => {
       expect(isGPT4('gpt-3.5-turbo')).toBe(false);
       expect(isGPT4('claude-2')).toBe(false);
       expect(isGPT4('gpt-4o')).toBe(true);
       expect(isGPT4('gpt-4o-mini')).toBe(true);
     });
-
     test('should return false for names that merely contain "gpt-4" but do not start with it', () => {
       expect(isGPT4('my-custom-gpt-4-model')).toBe(false);
       expect(isGPT4('old-gpt-4-variant')).toBe(false);
     });
-
     test('should return false for null, undefined, or empty string model names', () => {
       expect(isGPT4(null)).toBe(false);
       expect(isGPT4(undefined)).toBe(false);
@@ -255,18 +229,15 @@ describe('model-name-convert', () => {
       expect(isClaude3('claude-3-sonnet-20240229')).toBe(true);
       expect(isClaude3('claude-3-haiku-20240307')).toBe(true);
     });
-
     test('should return false for non-claude-3 model names', () => {
       expect(isClaude3('claude-2')).toBe(false);
       expect(isClaude3('claude-2.1')).toBe(false);
       expect(isClaude3('gpt-4')).toBe(false);
       expect(isClaude3('claude-3x-opus-20240229')).toBe(true);
     });
-
     test('should return false for names that merely contain "claude-3" but do not start with it', () => {
       expect(isClaude3('my-claude-3-custom')).toBe(false);
     });
-
     test('should return false for null, undefined, or empty string model names', () => {
       expect(isClaude3(null)).toBe(false);
       expect(isClaude3(undefined)).toBe(false);
@@ -279,12 +250,10 @@ describe('model-name-convert', () => {
       expect(modelNameToValue('gpt-4')).toBe('gpt-4');
       expect(modelNameToValue('customModel')).toBe('customModel');
     });
-
     test('should return custom part for custom model names not in Models directly', () => {
       expect(modelNameToValue('gpt-4-customSuffix')).toBe('4-customSuffix');
       expect(modelNameToValue('someModel-anotherValue')).toBe('anotherValue');
     });
-
     test('should return the name itself if not in Models and not "custom" by current isCustomModelName', () => {
       expect(modelNameToValue('singleName')).toBe('singleName');
     });
@@ -299,20 +268,17 @@ describe('model-name-convert', () => {
       expect(group[0]).toBe('openAi');
       expect(group[1]).toBe(actualMockModelGroups.openAi);
     });
-
     test('should find group by preset part being a value in a ModelGroup', () => {
       const gpt4Group = getModelNameGroup('gpt-4');
       expect(gpt4Group).toBeUndefined();
       const claudeGroup = getModelNameGroup('claude-2');
       expect(claudeGroup).toBeUndefined();
     });
-
     test('should handle model names with hyphens that are direct model keys', () => {
        expect(getModelNameGroup('gpt-3.5-turbo')).toBeUndefined();
       const azureGroup = getModelNameGroup('azureOpenAi-custom');
       expect(azureGroup[0]).toBe('azure');
     });
-
     test('should return undefined if modelName does not belong to any group', () => {
       expect(getModelNameGroup('unknownModel')).toBeUndefined();
       expect(getModelNameGroup('unknownModel-custom')).toBeUndefined();
@@ -320,82 +286,71 @@ describe('model-name-convert', () => {
   });
 
   describe('getModelValue', () => {
-    const mockConfigApiMode = {
-      apiMode: { groupName: 'openAi', itemName: 'gpt-4', isCustom: false, customName: '' }
-    };
+    const mockConfigApiMode = { apiMode: { groupName: 'openAi', itemName: 'gpt-4', isCustom: false, customName: '' } };
     const mockConfigModelName = { modelName: 'claude-2' };
-    const mockConfigCustomApiMode = {
-      apiMode: { groupName: 'openAi', itemName: 'gpt-4', isCustom: true, customName: 'my-variant' }
-    };
+    const mockConfigCustomApiMode = { apiMode: { groupName: 'openAi', itemName: 'gpt-4', isCustom: true, customName: 'my-variant' } };
     const mockConfigCustomModelName = { modelName: 'claude-2-my-variant' };
 
     test('should get value using apiMode if present', () => {
       expect(getModelValue(mockConfigApiMode)).toBe('gpt-4');
     });
-
     test('should get value using modelName if apiMode is not present', () => {
       expect(getModelValue(mockConfigModelName)).toBe('claude-2');
     });
-
     test('should get value for custom apiMode', () => {
       expect(getModelValue(mockConfigCustomApiMode)).toBe('4-my-variant');
     });
-
     test('should get value for custom modelName', () => {
       expect(getModelValue(mockConfigCustomModelName)).toBe('2-my-variant');
     });
   });
 
   describe('modelNameToApiMode', () => {
-    test('should convert a model whose presetPart is a group key', () => {
+    test('should convert a model whose presetPart is a group key', async () => {
+      await jest.isolateModulesAsync(async () => {
+        jest.doMock('../../config/index.mjs', () => ({ Models: actualMockModels, ModelGroups: actualMockModelGroups, ModelMode: actualMockModelMode, AlwaysCustomGroups: actualMockAlwaysCustomGroups }));
+        const { modelNameToApiMode } = await import('../model-name-convert.mjs'); // Use destructured import
         const apiModeOpenAi = modelNameToApiMode('openAi-custom');
         expect(apiModeOpenAi).toEqual({
-          groupName: 'openAi',
-          itemName: 'openAi',
-          isCustom: true,
-          customName: 'custom',
-          customUrl: '',
-          apiKey: '',
-          active: true,
+          groupName: 'openAi', itemName: 'openAi', isCustom: true, customName: 'custom', customUrl: '', apiKey: '', active: true,
         });
-    });
-
-    test('should convert a model where presetPart is in a group value list and not custom', () => {
-      const originalTestGroup = actualMockModelGroups.testGroup;
-      actualMockModelGroups.testGroup = { desc: 'Test Group', value: ['gpt4'] };
-
-      const apiModeGpt4 = modelNameToApiMode('gpt4');
-      expect(apiModeGpt4).toEqual({
-        groupName: 'testGroup',
-        itemName: 'gpt4',
-        isCustom: false,
-        customName: '',
-        customUrl: '',
-        apiKey: '',
-        active: true,
-      });
-      if (originalTestGroup === undefined) delete actualMockModelGroups.testGroup; else actualMockModelGroups.testGroup = originalTestGroup;
-    });
-
-    test('should return undefined for base models whose presetPart does not resolve to a group', () => {
-      expect(modelNameToApiMode('gpt-4')).toBeUndefined();
-    });
-
-    test('should convert a custom model name (e.g., group-custompart in AlwaysCustomGroups)', () => {
-      const apiMode = modelNameToApiMode('azure-myCustomAzure');
-      expect(apiMode).toEqual({
-        groupName: 'azure',
-        itemName: 'azure',
-        isCustom: true,
-        customName: 'myCustomAzure',
-        customUrl: '',
-        apiKey: '',
-        active: true,
       });
     });
-
-    test('should return undefined for a model name not found in any group', () => {
-      expect(modelNameToApiMode('unknownModel-custom')).toBeUndefined();
+    test('should convert a model where presetPart is in a group value list and not custom', async () => {
+      await jest.isolateModulesAsync(async () => {
+        const localMockGroups = JSON.parse(JSON.stringify(actualMockModelGroups));
+        localMockGroups.testGroup = { desc: 'Test Group', value: ['gpt4'] };
+        jest.doMock('../../config/index.mjs', () => ({ Models: actualMockModels, ModelGroups: localMockGroups, ModelMode: actualMockModelMode, AlwaysCustomGroups: actualMockAlwaysCustomGroups }));
+        const { modelNameToApiMode } = await import('../model-name-convert.mjs'); // Use destructured import
+        const apiModeGpt4 = modelNameToApiMode('gpt4');
+        expect(apiModeGpt4).toEqual({
+          groupName: 'testGroup', itemName: 'gpt4', isCustom: false, customName: '', customUrl: '', apiKey: '', active: true,
+        });
+      });
+    });
+    test('should return undefined for base models whose presetPart does not resolve to a group', async () => {
+      await jest.isolateModulesAsync(async () => {
+        jest.doMock('../../config/index.mjs', () => ({ Models: actualMockModels, ModelGroups: actualMockModelGroups, ModelMode: actualMockModelMode, AlwaysCustomGroups: actualMockAlwaysCustomGroups }));
+        const { modelNameToApiMode } = await import('../model-name-convert.mjs'); // Use destructured import
+        expect(modelNameToApiMode('gpt-4')).toBeUndefined();
+      });
+    });
+    test('should convert a custom model name (e.g., group-custompart in AlwaysCustomGroups)', async () => {
+      await jest.isolateModulesAsync(async () => {
+        jest.doMock('../../config/index.mjs', () => ({ Models: actualMockModels, ModelGroups: actualMockModelGroups, ModelMode: actualMockModelMode, AlwaysCustomGroups: actualMockAlwaysCustomGroups }));
+        const { modelNameToApiMode } = await import('../model-name-convert.mjs'); // Use destructured import
+        const apiMode = modelNameToApiMode('azure-myCustomAzure');
+        expect(apiMode).toEqual({
+          groupName: 'azure', itemName: 'azure', isCustom: true, customName: 'myCustomAzure', customUrl: '', apiKey: '', active: true,
+        });
+      });
+    });
+    test('should return undefined for a model name not found in any group', async () => {
+      await jest.isolateModulesAsync(async () => {
+        jest.doMock('../../config/index.mjs', () => ({ Models: actualMockModels, ModelGroups: actualMockModelGroups, ModelMode: actualMockModelMode, AlwaysCustomGroups: actualMockAlwaysCustomGroups }));
+        const { modelNameToApiMode } = await import('../model-name-convert.mjs'); // Use destructured import
+        expect(modelNameToApiMode('unknownModel-custom')).toBeUndefined();
+      });
     });
   });
 
@@ -408,43 +363,40 @@ describe('model-name-convert', () => {
   });
 
   describe('isInApiModeGroup', () => {
-    const configWithApiMode = {
-      apiMode: { groupName: 'openAi', itemName: 'custom', isCustom: true, customName: 'my-openai' }
-    };
+    const configWithApiMode = { apiMode: { groupName: 'openAi', itemName: 'custom', isCustom: true, customName: 'my-openai' } };
     const configWithModelName = { modelName: 'claude-2-custom' };
     const configWithResolvableModelName = { modelName: 'azure-deploymentX'};
 
     test('should return true if configOrSession (apiMode) is in the specified group', () => {
       expect(isInApiModeGroup(actualMockModelGroups.openAi.value, configWithApiMode)).toBe(true);
     });
-
     test('should return false if configOrSession (apiMode) is not in the specified group', () => {
       expect(isInApiModeGroup(actualMockModelGroups.anthropic.value, configWithApiMode)).toBe(false);
     });
-
-    test('should return true if configOrSession (modelName) is in the specified group', () => {
-      const originalAzureValue = actualMockModelGroups.azure ? actualMockModelGroups.azure.value ? [...actualMockModelGroups.azure.value] : [] : undefined;
-      const azureCreated = !actualMockModelGroups.azure;
-      if (!actualMockModelGroups.azure) actualMockModelGroups.azure = { value: [] };
-      else if (!actualMockModelGroups.azure.value) actualMockModelGroups.azure.value = [];
-
-      actualMockModelGroups.azure.value.push('azure');
-
-      expect(isInApiModeGroup(actualMockModelGroups.azure.value, configWithResolvableModelName)).toBe(true);
-
-      if (azureCreated) {
-        delete actualMockModelGroups.azure;
-      } else if (originalAzureValue) {
-        actualMockModelGroups.azure.value = originalAzureValue;
-      }
+    test('should return true if configOrSession (modelName) is in the specified group', async () => {
+      await jest.isolateModulesAsync(async () => {
+        const localMockModelGroups = JSON.parse(JSON.stringify(actualMockModelGroups));
+        if (!localMockModelGroups.azure) localMockModelGroups.azure = { value: [] };
+        else if (!localMockModelGroups.azure.value) localMockModelGroups.azure.value = [];
+        localMockModelGroups.azure.value.push('azure');
+        jest.doMock('../../config/index.mjs', () => ({ Models: actualMockModels, ModelGroups: localMockModelGroups, ModelMode: actualMockModelMode, AlwaysCustomGroups: actualMockAlwaysCustomGroups, }));
+        const { isInApiModeGroup } = await import('../model-name-convert.mjs'); // Use destructured import
+        expect(isInApiModeGroup(localMockModelGroups.azure.value, configWithResolvableModelName)).toBe(true);
+      });
     });
-
-    test('should return false if configOrSession (modelName) is not in the specified group', () => {
-      expect(isInApiModeGroup(actualMockModelGroups.openAi.value, configWithResolvableModelName)).toBe(false);
+    test('should return false if configOrSession (modelName) is not in the specified group', async () => {
+      await jest.isolateModulesAsync(async () => {
+        jest.doMock('../../config/index.mjs', () => ({ Models: actualMockModels, ModelGroups: actualMockModelGroups, ModelMode: actualMockModelMode, AlwaysCustomGroups: actualMockAlwaysCustomGroups }));
+        const { isInApiModeGroup } = await import('../model-name-convert.mjs'); // Use destructured import
+        expect(isInApiModeGroup(actualMockModelGroups.openAi.value, configWithResolvableModelName)).toBe(false);
+      });
     });
-
-    test('should return false if model in configOrSession does not belong to any group', () => {
-      expect(isInApiModeGroup(actualMockModelGroups.anthropic.value, configWithModelName)).toBe(false);
+    test('should return false if model in configOrSession does not belong to any group', async () => {
+      await jest.isolateModulesAsync(async () => {
+        jest.doMock('../../config/index.mjs', () => ({ Models: actualMockModels, ModelGroups: actualMockModelGroups, ModelMode: actualMockModelMode, AlwaysCustomGroups: actualMockAlwaysCustomGroups }));
+        const { isInApiModeGroup } = await import('../model-name-convert.mjs'); // Use destructured import
+        expect(isInApiModeGroup(actualMockModelGroups.anthropic.value, configWithModelName)).toBe(false);
+      });
     });
   });
 
@@ -452,14 +404,13 @@ describe('model-name-convert', () => {
     const baseConfig = {
       customApiModes: [
         { groupName: 'openAi', itemName: 'gpt-4', isCustom: true, customName: 'my-gpt4', active: true },
-        { groupName: 'anthropic', itemName: 'claude-2', isCustom: false, active: false }, // Inactive
+        { groupName: 'anthropic', itemName: 'claude-2', isCustom: false, active: false },
         { groupName: 'custom', itemName: 'customModel', isCustom: true, customName: 'my-custom-api', active: true },
       ],
       activeApiModes: ['gpt-3.5-turbo', 'azureOpenAi', 'ollama', 'customModel'],
       azureDeploymentName: 'my-azure-deploy',
       ollamaModelName: 'my-ollama-model',
     };
-
     test('should get all modes when onlyActive is false', () => {
       const result = getApiModesFromConfig(baseConfig, false);
       expect(result).toHaveLength(
@@ -474,7 +425,6 @@ describe('model-name-convert', () => {
         baseConfig.customApiModes[2],
       ]));
     });
-
     test('should get only active modes when onlyActive is true', () => {
       const result = getApiModesFromConfig(baseConfig, true);
       expect(result).toHaveLength(2 + 2);
@@ -488,7 +438,6 @@ describe('model-name-convert', () => {
         baseConfig.customApiModes[1],
       ]));
     });
-
     test('should skip activeApiMode if its name matches a stringApiMode', () => {
       const configWithOverlap = {
         customApiModes: [
@@ -531,21 +480,17 @@ describe('model-name-convert', () => {
       const config = { apiMode: apiMode1 };
       expect(isApiModeSelected(apiMode1, config)).toBe(true);
     });
-
     test('should return false if config uses apiMode and it does not match', () => {
       const config = { apiMode: apiMode1 };
       expect(isApiModeSelected(apiMode2, config)).toBe(false);
     });
-
     test('should return true if config uses modelName and it matches converted apiMode', () => {
       const config = { modelName: 'gpt-4' };
       expect(isApiModeSelected(apiMode1, config)).toBe(true);
     });
-
     test('should return false if config uses modelName and it does not match converted apiMode', () => {
       const config = { modelName: 'gpt-4-variant' };
       expect(isApiModeSelected(apiMode1, config)).toBe(false);
-
       const config2 = { modelName: 'gpt-3.5-turbo'};
       expect(isApiModeSelected(apiMode1, config2)).toBe(false);
     });
@@ -558,11 +503,9 @@ describe('model-name-convert', () => {
     test('should return true for exact match (config.modelName)', () => {
       expect(isUsingModelName('gpt-4', configWithModelName)).toBe(true);
     });
-
     test('should return true for exact match (config.apiMode)', () => {
       expect(isUsingModelName('gpt-4', configWithApiMode)).toBe(true);
     });
-
     test('should return false if modelName does not match', () => {
       expect(isUsingModelName('claude-2', configWithModelName)).toBe(false);
       expect(isUsingModelName('claude-2', configWithApiMode)).toBe(false);
@@ -579,49 +522,68 @@ describe('model-name-convert', () => {
       const configWithGptCustomVariant = { modelName: 'gpt-custom-variant' };
 
       test('should return true for partial match (config.modelName custom, preset part in Models)', async () => {
-        const originalGptModel = actualMockModels['gpt'];
-        try {
-          actualMockModels['gpt'] = { desc: "GPT Base", value: "gpt" };
+        await jest.isolateModulesAsync(async () => {
+          const localMocks = JSON.parse(JSON.stringify(actualMockModels));
+          localMocks['gpt'] = { desc: "GPT Base", value: "gpt" };
+          jest.doMock('../../config/index.mjs', () => ({
+            Models: localMocks,
+            ModelGroups: JSON.parse(JSON.stringify(actualMockModelGroups)),
+            ModelMode: JSON.parse(JSON.stringify(actualMockModelMode)),
+            AlwaysCustomGroups: JSON.parse(JSON.stringify(actualMockAlwaysCustomGroups)),
+          }));
+          const { isUsingModelName } = await import('../model-name-convert.mjs'); // Use destructured import
           expect(isUsingModelName('gpt', configWithGptCustomVariant)).toBe(true);
-        } finally {
-          if (originalGptModel === undefined) delete actualMockModels['gpt']; else actualMockModels['gpt'] = originalGptModel;
-        }
+        });
       });
 
       test('should return true for partial match (config.modelName custom, preset part in ModelGroups)', async () => {
-        const originalGptGroup = actualMockModelGroups['gpt'];
-        try {
-          actualMockModelGroups['gpt'] = { desc: "GPT Group", value: ['gpt-3.5', 'gpt-4'] };
+        await jest.isolateModulesAsync(async () => {
+          const localMockGroups = JSON.parse(JSON.stringify(actualMockModelGroups));
+          localMockGroups['gpt'] = { desc: "GPT Group", value: ['gpt-3.5', 'gpt-4'] };
+          jest.doMock('../../config/index.mjs', () => ({
+            Models: JSON.parse(JSON.stringify(actualMockModels)),
+            ModelGroups: localMockGroups,
+            ModelMode: JSON.parse(JSON.stringify(actualMockModelMode)),
+            AlwaysCustomGroups: JSON.parse(JSON.stringify(actualMockAlwaysCustomGroups)),
+          }));
+          const { isUsingModelName } = await import('../model-name-convert.mjs'); // Use destructured import
           expect(isUsingModelName('gpt-3.5', configWithGptCustomVariant)).toBe(true);
-        } finally {
-          if (originalGptGroup === undefined) delete actualMockModelGroups['gpt']; else actualMockModelGroups['gpt'] = originalGptGroup;
-        }
+        });
       });
 
       test('should return false for partial match (config.modelName custom, preset part not in Models or ModelGroups)', async () => {
-        const originalGptModel = actualMockModels['gpt'];
-        const originalGptGroup = actualMockModelGroups['gpt'];
-        try {
-          if ('gpt' in actualMockModels) delete actualMockModels['gpt'];
-          if ('gpt' in actualMockModelGroups) delete actualMockModelGroups['gpt'];
+        await jest.isolateModulesAsync(async () => {
+          const localMocks = JSON.parse(JSON.stringify(actualMockModels));
+          const localMockGroups = JSON.parse(JSON.stringify(actualMockModelGroups));
+          if ('gpt' in localMocks) delete localMocks['gpt'];
+          if ('gpt' in localMockGroups) delete localMockGroups['gpt'];
 
+          jest.doMock('../../config/index.mjs', () => ({
+            Models: localMocks,
+            ModelGroups: localMockGroups,
+            ModelMode: JSON.parse(JSON.stringify(actualMockModelMode)),
+            AlwaysCustomGroups: JSON.parse(JSON.stringify(actualMockAlwaysCustomGroups)),
+          }));
+          const { isUsingModelName } = await import('../model-name-convert.mjs'); // Use destructured import
           expect(isUsingModelName('gpt-custom-variant', configWithGptCustomVariant)).toBe(true);
           expect(isUsingModelName('gpt', configWithGptCustomVariant)).toBe(false);
-        } finally {
-          if (originalGptModel !== undefined) actualMockModels['gpt'] = originalGptModel;
-          if (originalGptGroup !== undefined) actualMockModelGroups['gpt'] = originalGptGroup;
-        }
+        });
       });
 
       test('should return true if preset part matches modelName and is in Models (original example logic)', async () => {
-        const originalBingModel = actualMockModels['bingFree4'];
-        try {
-          actualMockModels['bingFree4'] = { desc: "Bing Free Gen4", value: "bingFree4" };
+        await jest.isolateModulesAsync(async () => {
+          const localMocks = JSON.parse(JSON.stringify(actualMockModels));
+          localMocks['bingFree4'] = { desc: "Bing Free Gen4", value: "bingFree4" };
+          jest.doMock('../../config/index.mjs', () => ({
+            Models: localMocks,
+            ModelGroups: JSON.parse(JSON.stringify(actualMockModelGroups)),
+            ModelMode: JSON.parse(JSON.stringify(actualMockModelMode)),
+            AlwaysCustomGroups: JSON.parse(JSON.stringify(actualMockAlwaysCustomGroups)),
+          }));
+          const { isUsingModelName } = await import('../model-name-convert.mjs'); // Use destructured import
           const configWithBingFast = { modelName: 'bingFree4-fast' };
           expect(isUsingModelName('bingFree4', configWithBingFast)).toBe(true);
-        } finally {
-          if (originalBingModel === undefined) delete actualMockModels['bingFree4']; else actualMockModels['bingFree4'] = originalBingModel;
-        }
+        });
       });
     });
   });
