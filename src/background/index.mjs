@@ -319,17 +319,39 @@ async function executeApi(session, port, config) {
           try {
             port.proxy.postMessage({ session })
           } catch (e) {
-            console.error('[background] Error posting message to proxy tab in executeApi (ChatGPT Web Model):', e, { session });
-            try {
-              port.postMessage({ error: 'Failed to communicate with ChatGPT tab. Try refreshing the page.' });
-            } catch (notifyError) {
-              console.error('[background] Error sending communication failure notification back:', notifyError);
+            console.warn('[background] Error posting message to existing proxy tab in executeApi (ChatGPT Web Model):', e, '. Attempting to reconnect.', { session });
+            setPortProxy(port, tabId); // Attempt to re-establish the connection
+            if (port.proxy) {
+              console.debug('[background] Proxy re-established. Attempting to post message again.');
+              try {
+                port.proxy.postMessage({ session });
+                console.info('[background] Successfully posted session after proxy reconnection.');
+              } catch (e2) {
+                console.error('[background] Error posting message even after proxy reconnection:', e2, { session });
+                try {
+                  port.postMessage({ error: 'Failed to communicate with ChatGPT tab after reconnection attempt. Try refreshing the page.' });
+                } catch (notifyError) {
+                  console.error('[background] Error sending final communication failure notification back:', notifyError);
+                }
+              }
+            } else {
+              console.error('[background] Failed to re-establish proxy connection. Cannot send session.');
+              try {
+                port.postMessage({ error: 'Could not re-establish connection to ChatGPT tab. Try refreshing the page.' });
+              } catch (notifyError) {
+                console.error('[background] Error sending re-establishment failure notification back:', notifyError);
+              }
             }
           }
         } else {
           console.error(
-            '[background] Failed to send message: port.proxy is still not available after setPortProxy.',
-          )
+            '[background] Failed to send message: port.proxy is still not available after initial setPortProxy attempt.',
+          );
+          try {
+            port.postMessage({ error: 'Failed to initialize connection to ChatGPT tab. Try refreshing the page.' });
+          } catch (notifyError) {
+            console.error('[background] Error sending initial connection failure notification back:', notifyError);
+          }
         }
       } else {
         console.debug('[background] No valid ChatGPT Tab ID found. Using direct API call.')
@@ -488,22 +510,21 @@ Browser.runtime.onMessage.addListener(async (message, sender) => {
         try {
           const response = await fetch(message.data.input, message.data.init)
           const text = await response.text()
+          const responseObject = { // Defined for clarity before conditional error property
+            body: text,
+            ok: response.ok,
+            status: response.status,
+            statusText: response.statusText,
+            headers: Object.fromEntries(response.headers),
+          };
           if (!response.ok) {
+            responseObject.error = `HTTP error ${response.status}: ${response.statusText}`;
             console.warn(`[background] FETCH received error status: ${response.status} for ${message.data.input}`);
           }
           console.debug(
             `[background] FETCH successful for ${message.data.input}, status: ${response.status}`,
           )
-          return [
-            {
-              body: text,
-              ok: response.ok,
-              status: response.status,
-              statusText: response.statusText,
-              headers: Object.fromEntries(response.headers),
-            },
-            null,
-          ]
+          return [responseObject, null];
         } catch (error) {
           console.error(`[background] FETCH error for ${message.data.input}:`, error)
           return [null, { message: error.message, stack: error.stack }]
@@ -553,7 +574,7 @@ try {
         ) {
           console.log('[background] Capturing Arkose public_key request:', details.url)
           let formData = new URLSearchParams()
-          if (details.requestBody?.formData) { // Optional chaining
+          if (details.requestBody?.formData) {
             for (const k in details.requestBody.formData) {
               formData.append(k, details.requestBody.formData[k])
             }
