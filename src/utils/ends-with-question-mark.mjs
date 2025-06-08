@@ -4,6 +4,6 @@ export function endsWithQuestionMark(question) {
     trimmedQuestion.endsWith('?') || // ASCII
     trimmedQuestion.endsWith('？') || // Chinese/Japanese
     trimmedQuestion.endsWith('؟') || // Arabic
-    trimmedQuestion.endsWith('⸮') // Arabic
+    trimmedQuestion.endsWith('⸮') // Reversed/inverted question mark (used in some contexts including Arabic)
   )
 }

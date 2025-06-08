@@ -6,7 +6,7 @@
   "extends": ["eslint:recommended", "plugin:react/recommended"],
   "overrides": [
     {
-      "files": ["src/utils/__tests__/**/*.mjs", "*.test.mjs"],
+      "files": ["src/utils/__tests__/**/*.mjs", "**/*.test.mjs"],
       "env": {
         "jest": true,
         "node": true
