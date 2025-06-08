@@ -5,7 +5,6 @@ export function isMobile() {
   let check = false
   ;(function (a) {
     if (!a) { // Handle cases where 'a' (userAgent/vendor/opera) might be null, undefined, or empty
-      check = false;
       return;
     }
     if (
