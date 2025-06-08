@@ -53,8 +53,8 @@ import { isUsingModelName } from '../utils/model-name-convert.mjs'
 
 const RECONNECT_CONFIG = {
   MAX_ATTEMPTS: 5,
-  BASE_DELAY_MS: 1000, // Base delay in milliseconds
-  BACKOFF_MULTIPLIER: 2, // Multiplier for exponential backoff
+  BASE_DELAY_MS: 1000,
+  BACKOFF_MULTIPLIER: 2,
 };
 
 const SENSITIVE_KEYWORDS = [
@@ -66,6 +66,11 @@ const SENSITIVE_KEYWORDS = [
   'auth',
   'key',
   'credential',
+  'jwt',
+  'session',
+  'access',
+  'private',
+  'oauth',
 ];
 
 function redactSensitiveFields(obj, recursionDepth = 0, maxDepth = 5, seen = new WeakSet()) {
@@ -94,7 +99,7 @@ function redactSensitiveFields(obj, recursionDepth = 0, maxDepth = 5, seen = new
       }
       if (isSensitive) {
         redactedObj[key] = 'REDACTED';
-      } else if (typeof obj[key] === 'object') {
+      } else if (obj[key] !== null && typeof obj[key] === 'object') { // Added obj[key] !== null check
         redactedObj[key] = redactSensitiveFields(obj[key], recursionDepth + 1, maxDepth, seen);
       } else {
         redactedObj[key] = obj[key];
@@ -130,7 +135,16 @@ function setPortProxy(port, proxyTabId) {
     port._portOnMessage = (msg) => {
       console.debug('[background] Message to proxy tab:', msg)
       if (port.proxy) {
-        port.proxy.postMessage(msg)
+        try {
+          port.proxy.postMessage(msg)
+        } catch (e) {
+          console.error('[background] Error posting message to proxy tab in _portOnMessage:', e, msg);
+          try { // Attempt to notify the original sender about the failure
+            port.postMessage({ error: 'Failed to forward message to target tab. Tab might be closed or an extension error occurred.' });
+          } catch (notifyError) {
+            console.error('[background] Error sending forwarding failure notification back to original sender:', notifyError);
+          }
+        }
       } else {
         console.warn('[background] Port proxy not available to send message:', msg)
       }
@@ -159,6 +173,15 @@ function setPortProxy(port, proxyTabId) {
         if (port._portOnMessage) {
             try { port.onMessage.removeListener(port._portOnMessage); }
             catch(e) { console.warn("[background] Error removing _portOnMessage on max retries:", e); }
+        }
+        if (port._portOnDisconnect) { // Cleanup _portOnDisconnect as well
+            try { port.onDisconnect.removeListener(port._portOnDisconnect); }
+            catch(e) { console.warn("[background] Error removing _portOnDisconnect on max retries:", e); }
+        }
+        try { // Notify user about final connection failure
+          port.postMessage({ error: `Connection to ChatGPT tab lost after ${RECONNECT_CONFIG.MAX_ATTEMPTS} attempts. Please refresh the page.` });
+        } catch(e) {
+          console.warn("[background] Error sending final error message on max retries:", e);
         }
         return;
       }
@@ -225,6 +248,7 @@ async function executeApi(session, port, config) {
   try {
     if (isUsingCustomModel(session)) {
       console.debug('[background] Using Custom Model API')
+      // ... (rest of the logic for custom model remains the same)
       if (!session.apiMode)
         await generateAnswersWithCustomApi(
           port,
@@ -270,7 +294,16 @@ async function executeApi(session, port, config) {
         }
         if (port.proxy) {
           console.debug('[background] Posting message to proxy tab:', { session })
-          port.proxy.postMessage({ session })
+          try {
+            port.proxy.postMessage({ session })
+          } catch (e) {
+            console.error('[background] Error posting message to proxy tab in executeApi (ChatGPT Web Model):', e, { session });
+            try {
+              port.postMessage({ error: 'Failed to communicate with ChatGPT tab. Try refreshing the page.' });
+            } catch (notifyError) {
+              console.error('[background] Error sending communication failure notification back:', notifyError);
+            }
+          }
         } else {
           console.error(
             '[background] Failed to send message: port.proxy is still not available after setPortProxy.',
@@ -281,7 +314,7 @@ async function executeApi(session, port, config) {
         const accessToken = await getChatGptAccessToken()
         await generateAnswersWithChatgptWebApi(port, session.question, session, accessToken)
       }
-    } else if (isUsingClaudeWebModel(session)) {
+    } else if (isUsingClaudeWebModel(session)) { // ... other models
       console.debug('[background] Using Claude Web Model')
       const sessionKey = await getClaudeSessionKey()
       await generateAnswersWithClaudeWebApi(port, session.question, session, sessionKey)
@@ -433,12 +466,16 @@ Browser.runtime.onMessage.addListener(async (message, sender) => {
         try {
           const response = await fetch(message.data.input, message.data.init)
           const text = await response.text()
+          if (!response.ok) { // Added check for HTTP error statuses
+            console.warn(`[background] FETCH received error status: ${response.status} for ${message.data.input}`);
+          }
           console.debug(
             `[background] FETCH successful for ${message.data.input}, status: ${response.status}`,
           )
           return [
             {
               body: text,
+              ok: response.ok, // Added ok status
               status: response.status,
               statusText: response.statusText,
               headers: Object.fromEntries(response.headers),
@@ -562,11 +599,11 @@ try {
       urls: ['wss://sydney.bing.com/*', 'https://www.bing.com/*'],
       types: ['xmlhttprequest', 'websocket'],
     },
-    ['blocking', 'requestHeaders'],
+    ['requestHeaders', ...(Browser.runtime.getManifest().manifest_version < 3 ? ['blocking'] : [])],
   )
 
   Browser.tabs.onUpdated.addListener(async (tabId, info, tab) => {
-    const outerTryCatchError = (error) => { // Renamed to avoid conflict with inner error
+    const outerTryCatchError = (error) => {
       console.error('[background] Error in tabs.onUpdated listener callback (outer):', error, tabId, info);
     };
     try {
@@ -593,7 +630,6 @@ try {
         }
       } catch (browserError) {
         console.warn('[background] Browser.sidePanel.setOptions failed:', browserError.message);
-        // Fallback will be attempted below if sidePanelSet is still false
       }
 
       if (!sidePanelSet) {
@@ -618,7 +654,7 @@ try {
       if (!sidePanelSet) {
         console.warn('[background] SidePanel API (Browser.sidePanel or chrome.sidePanel) not available or setOptions failed in this browser. Side panel options not set for tab:', tabId);
       }
-    } catch (error) { // This is the outer try-catch from the original code
+    } catch (error) {
       outerTryCatchError(error);
     }
   });

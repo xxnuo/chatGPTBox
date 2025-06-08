@@ -577,7 +577,7 @@ async function overwriteAccessToken() {
     if (location.pathname === '/api/auth/session') {
       console.debug('[content] On /api/auth/session page.')
       const preElement = document.querySelector('pre')
-      if (preElement && preElement.textContent) {
+      if (preElement?.textContent) { // Applied optional chaining
         const response = preElement.textContent
         try {
           data = JSON.parse(response)
@@ -606,7 +606,7 @@ async function overwriteAccessToken() {
       }
     }
 
-    if (data && data.accessToken) {
+    if (data?.accessToken) { // Applied optional chaining
       await setAccessToken(data.accessToken)
       console.log('[content] ChatGPT Access token has been set successfully from page data.')
     } else {
@@ -679,6 +679,12 @@ async function prepareForJumpBackNotification() {
                 }
               } catch (err) {
                 console.error('[content] Error polling for Claude session key:', err)
+                // Example for Qodo: Stop on specific error
+                // if (err.message.includes('NetworkError') && !promiseSettled) {
+                //   promiseSettled = true;
+                //   cleanup();
+                //   reject(new Error(`Failed to get Claude session key: ${err.message}`));
+                // }
               }
             }, 500)
 
@@ -745,6 +751,12 @@ async function prepareForJumpBackNotification() {
                 }
               } catch (err_set) {
                 console.error('[content] Error setting Kimi refresh token from polling:', err_set)
+                // Example for Qodo: Stop on specific error
+                // if (err_set.message.includes('SomeError') && !promiseSettled) {
+                //   promiseSettled = true;
+                //   cleanup();
+                //   reject(new Error(`Failed to process Kimi token: ${err_set.message}`));
+                // }
               }
             }, 500)
 
