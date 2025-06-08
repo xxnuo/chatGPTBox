@@ -169,10 +169,6 @@ async function mountComponent(siteConfig) {
   }
 }
 
-/**
- * @param {string[]|function} inputQuery
- * @returns {Promise<string>}
- */
 async function getInput(inputQuery) {
   console.debug('[content] getInput called with query:', inputQuery)
   try {
@@ -209,10 +205,10 @@ async function getInput(inputQuery) {
       }
     }
     console.debug('[content] No input found from selector or element empty.')
-    return undefined // Explicitly return undefined if no input found
+    return undefined
   } catch (error) {
     console.error('[content] Error in getInput:', error)
-    return undefined // Explicitly return undefined on error
+    return undefined
   }
 }
 
@@ -222,7 +218,7 @@ const deleteToolbar = () => {
     if (toolbarContainer && toolbarContainer.className === 'chatgptbox-toolbar-container') {
       console.debug('[content] Deleting toolbar:', toolbarContainer)
       toolbarContainer.remove()
-      toolbarContainer = null // Clear reference
+      toolbarContainer = null
     }
   } catch (error) {
     console.error('[content] Error in deleteToolbar:', error)
@@ -526,7 +522,7 @@ async function prepareForStaticCard() {
       let initSuccess = true
       if (siteName in siteConfig) {
         const siteAdapterAction = siteConfig[siteName].action
-        if (siteAdapterAction && siteAdapterAction.init) {
+        if (siteAdapterAction?.init) {
           console.debug(`[content] Initializing site adapter action for ${siteName}.`)
           initSuccess = await siteAdapterAction.init(
             location.hostname,
@@ -577,7 +573,7 @@ async function overwriteAccessToken() {
     if (location.pathname === '/api/auth/session') {
       console.debug('[content] On /api/auth/session page.')
       const preElement = document.querySelector('pre')
-      if (preElement?.textContent) { // Applied optional chaining
+      if (preElement?.textContent) {
         const response = preElement.textContent
         try {
           data = JSON.parse(response)
@@ -606,7 +602,7 @@ async function overwriteAccessToken() {
       }
     }
 
-    if (data?.accessToken) { // Applied optional chaining
+    if (data?.accessToken) {
       await setAccessToken(data.accessToken)
       console.log('[content] ChatGPT Access token has been set successfully from page data.')
     } else {
@@ -679,12 +675,12 @@ async function prepareForJumpBackNotification() {
                 }
               } catch (err) {
                 console.error('[content] Error polling for Claude session key:', err)
-                // Example for Qodo: Stop on specific error
-                // if (err.message.includes('NetworkError') && !promiseSettled) {
-                //   promiseSettled = true;
-                //   cleanup();
-                //   reject(new Error(`Failed to get Claude session key: ${err.message}`));
-                // }
+                const errMsg = err.message.toLowerCase();
+                if ((errMsg.includes('network') || errMsg.includes('permission')) && !promiseSettled) {
+                  promiseSettled = true;
+                  cleanup();
+                  reject(new Error(`Failed to get Claude session key due to: ${err.message}`));
+                }
               }
             }, 500)
 
@@ -751,12 +747,12 @@ async function prepareForJumpBackNotification() {
                 }
               } catch (err_set) {
                 console.error('[content] Error setting Kimi refresh token from polling:', err_set)
-                // Example for Qodo: Stop on specific error
-                // if (err_set.message.includes('SomeError') && !promiseSettled) {
-                //   promiseSettled = true;
-                //   cleanup();
-                //   reject(new Error(`Failed to process Kimi token: ${err_set.message}`));
-                // }
+                const errMsg = err_set.message.toLowerCase();
+                if ((errMsg.includes('network') || errMsg.includes('storage')) && !promiseSettled) { // Example error check
+                  promiseSettled = true;
+                  cleanup();
+                  reject(new Error(`Failed to process Kimi token: ${err_set.message}`));
+                }
               }
             }, 500)
 

@@ -86,27 +86,50 @@ function redactSensitiveFields(obj, recursionDepth = 0, maxDepth = 5, seen = new
   }
   seen.add(obj);
 
-  const redactedObj = Array.isArray(obj) ? [] : {};
-  for (const key in obj) {
-    if (Object.prototype.hasOwnProperty.call(obj, key)) {
-      const lowerKey = key.toLowerCase();
-      let isSensitive = false;
-      for (const keyword of SENSITIVE_KEYWORDS) {
-        if (lowerKey.includes(keyword)) {
-          isSensitive = true;
-          break;
+  if (Array.isArray(obj)) {
+    const redactedArray = [];
+    for (let i = 0; i < obj.length; i++) {
+      const item = obj[i];
+      if (item !== null && typeof item === 'object') {
+        redactedArray[i] = redactSensitiveFields(item, recursionDepth + 1, maxDepth, seen);
+      } else if (typeof item === 'string') {
+        let isItemSensitive = false;
+        const lowerItem = item.toLowerCase();
+        for (const keyword of SENSITIVE_KEYWORDS) {
+          if (lowerItem.includes(keyword)) {
+            isItemSensitive = true;
+            break;
+          }
         }
-      }
-      if (isSensitive) {
-        redactedObj[key] = 'REDACTED';
-      } else if (obj[key] !== null && typeof obj[key] === 'object') { // Added obj[key] !== null check
-        redactedObj[key] = redactSensitiveFields(obj[key], recursionDepth + 1, maxDepth, seen);
+        redactedArray[i] = isItemSensitive ? 'REDACTED' : item;
       } else {
-        redactedObj[key] = obj[key];
+        redactedArray[i] = item;
       }
     }
+    return redactedArray;
+  } else {
+    const redactedObj = {};
+    for (const key in obj) {
+      if (Object.prototype.hasOwnProperty.call(obj, key)) {
+        const lowerKey = key.toLowerCase();
+        let isKeySensitive = false;
+        for (const keyword of SENSITIVE_KEYWORDS) {
+          if (lowerKey.includes(keyword)) {
+            isKeySensitive = true;
+            break;
+          }
+        }
+        if (isKeySensitive) {
+          redactedObj[key] = 'REDACTED';
+        } else if (obj[key] !== null && typeof obj[key] === 'object') {
+          redactedObj[key] = redactSensitiveFields(obj[key], recursionDepth + 1, maxDepth, seen);
+        } else {
+          redactedObj[key] = obj[key];
+        }
+      }
+    }
+    return redactedObj;
   }
-  return redactedObj;
 }
 
 function setPortProxy(port, proxyTabId) {
@@ -139,7 +162,7 @@ function setPortProxy(port, proxyTabId) {
           port.proxy.postMessage(msg)
         } catch (e) {
           console.error('[background] Error posting message to proxy tab in _portOnMessage:', e, msg);
-          try { // Attempt to notify the original sender about the failure
+          try {
             port.postMessage({ error: 'Failed to forward message to target tab. Tab might be closed or an extension error occurred.' });
           } catch (notifyError) {
             console.error('[background] Error sending forwarding failure notification back to original sender:', notifyError);
@@ -174,11 +197,11 @@ function setPortProxy(port, proxyTabId) {
             try { port.onMessage.removeListener(port._portOnMessage); }
             catch(e) { console.warn("[background] Error removing _portOnMessage on max retries:", e); }
         }
-        if (port._portOnDisconnect) { // Cleanup _portOnDisconnect as well
+        if (port._portOnDisconnect) {
             try { port.onDisconnect.removeListener(port._portOnDisconnect); }
-            catch(e) { console.warn("[background] Error removing _portOnDisconnect on max retries:", e); }
+            catch(e) { console.warn("[background] Error removing _portOnDisconnect from main port on max retries:", e); }
         }
-        try { // Notify user about final connection failure
+        try {
           port.postMessage({ error: `Connection to ChatGPT tab lost after ${RECONNECT_CONFIG.MAX_ATTEMPTS} attempts. Please refresh the page.` });
         } catch(e) {
           console.warn("[background] Error sending final error message on max retries:", e);
@@ -248,7 +271,6 @@ async function executeApi(session, port, config) {
   try {
     if (isUsingCustomModel(session)) {
       console.debug('[background] Using Custom Model API')
-      // ... (rest of the logic for custom model remains the same)
       if (!session.apiMode)
         await generateAnswersWithCustomApi(
           port,
@@ -314,7 +336,7 @@ async function executeApi(session, port, config) {
         const accessToken = await getChatGptAccessToken()
         await generateAnswersWithChatgptWebApi(port, session.question, session, accessToken)
       }
-    } else if (isUsingClaudeWebModel(session)) { // ... other models
+    } else if (isUsingClaudeWebModel(session)) {
       console.debug('[background] Using Claude Web Model')
       const sessionKey = await getClaudeSessionKey()
       await generateAnswersWithClaudeWebApi(port, session.question, session, sessionKey)
@@ -466,7 +488,7 @@ Browser.runtime.onMessage.addListener(async (message, sender) => {
         try {
           const response = await fetch(message.data.input, message.data.init)
           const text = await response.text()
-          if (!response.ok) { // Added check for HTTP error statuses
+          if (!response.ok) {
             console.warn(`[background] FETCH received error status: ${response.status} for ${message.data.input}`);
           }
           console.debug(
@@ -475,7 +497,7 @@ Browser.runtime.onMessage.addListener(async (message, sender) => {
           return [
             {
               body: text,
-              ok: response.ok, // Added ok status
+              ok: response.ok,
               status: response.status,
               statusText: response.statusText,
               headers: Object.fromEntries(response.headers),
@@ -531,7 +553,7 @@ try {
         ) {
           console.log('[background] Capturing Arkose public_key request:', details.url)
           let formData = new URLSearchParams()
-          if (details.requestBody && details.requestBody.formData) {
+          if (details.requestBody?.formData) { // Optional chaining
             for (const k in details.requestBody.formData) {
               formData.append(k, details.requestBody.formData[k])
             }
