@@ -1,4 +1,7 @@
 export function endsWithQuestionMark(question) {
+  if (typeof question !== 'string') {
+    return false;
+  }
   const trimmedQuestion = question.trim();
   return (
     trimmedQuestion.endsWith('?') || // ASCII

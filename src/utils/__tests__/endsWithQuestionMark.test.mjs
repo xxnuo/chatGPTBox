@@ -64,4 +64,13 @@ describe('endsWithQuestionMark', () => {
   test('should return true for a string with leading/trailing whitespace ending in an alternative Arabic question mark', () => {
     expect(endsWithQuestionMark('  Alternative Arabic⸮  ')).toBe(true);
   });
+
+  test('should return false for non-string inputs', () => {
+    expect(endsWithQuestionMark(null)).toBe(false);
+    expect(endsWithQuestionMark(undefined)).toBe(false);
+    expect(endsWithQuestionMark(123)).toBe(false);
+    expect(endsWithQuestionMark({})).toBe(false);
+    expect(endsWithQuestionMark([])).toBe(false);
+    expect(endsWithQuestionMark(() => {})).toBe(false);
+  });
 });
