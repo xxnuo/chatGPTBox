@@ -112,14 +112,13 @@ describe('isMobile', () => {
     expect(isMobile()).toBe(false);
   });
 
-  test('should return false when userAgent and userAgentData are undefined/null', () => {
+  test('should return false when all detection methods provide no information or are undefined', () => {
     userAgentDataSpy.mockReturnValue(undefined);
-    userAgentSpy.mockReturnValue(undefined); // This will cause an error in the function with .substr(0,4)
+    userAgentSpy.mockReturnValue(undefined);
     vendorSpy.mockReturnValue(undefined);
     operaSpy.mockReturnValue(undefined);
-    // The function is written as (navigator.userAgent || navigator.vendor || window.opera)
-    // If all are undefined/null, `a.substr(0,4)` will throw.
-    expect(() => isMobile()).toThrow();
+    // With the fix in isMobile(), it should now return false instead of throwing
+    expect(isMobile()).toBe(false);
   });
 
   test('should return false for empty user agent and no userAgentData.mobile', () => {
