@@ -1,0 +1,4 @@
+onlyBuiltDependencies:
+  - '@parcel/watcher'
+  - pre-commit
+  - spawn-sync
