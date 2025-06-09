@@ -24,8 +24,8 @@
   "Append Query": "挂载到末尾的查询选择器",
   "Prepend Query": "插入到开头的查询选择器",
   "Wechat Pay": "微信打赏",
-  "Type your question here\nEnter to send, shift + enter to break line": "在此输入你的问题\n回车 发送\nshift+回车 换行",
-  "Type your question here\nEnter to stop generating\nShift + enter to break line": "在此输入你的问题\n回车 停止生成\nshift+回车 换行",
+  "Type your question here\nEnter to send, shift + enter to break line": "在此输入你的问题（回车 发送、Shift+回车 换行）",
+  "Type your question here\nEnter to stop generating\nShift + enter to break line": "在此输入你的问题（回车 停止生成、Shift+回车 换行）",
   "Ask ChatGPT": "询问ChatGPT",
   "No Input Found": "无输入",
   "You": "你",
@@ -164,5 +164,8 @@
   "ChatGLM (GLM-4-Air, 128k)": "ChatGLM (GLM4Air, 性价比, 128k)",
   "ChatGLM (GLM-4-0520, 128k)": "ChatGLM (GLM4-0520, 最智能, 128k)",
   "ChatGLM (Emohaa)": "ChatGLM (Emohaa, 专业情绪咨询)",
-  "ChatGLM (CharGLM-3)": "ChatGLM (CharGLM-3, 角色扮演)"
+  "ChatGLM (CharGLM-3)": "ChatGLM (CharGLM-3, 角色扮演)",
+  "Ollama (AI Pod, Qwen3:8b)": "Ollama (AI Pod, Qwen3:8b)",
+  "Ollama (AI Pod, Qwen3:14b)": "Ollama (AI Pod, Qwen3:14b)",
+  "Ollama (AI Pod, Qwen3:32b)": "Ollama (AI Pod, Qwen3:32b)"
 }
